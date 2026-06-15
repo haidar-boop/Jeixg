@@ -80,6 +80,7 @@ print(result.summary())
 - [API reference](docs/api.md)
 - [Database schema](docs/database_schema.md)
 - [Deployment](docs/deployment.md)
+- [Deploying on PythonAnywhere](docs/pythonanywhere.md)
 - [Dashboard](dashboard/README.md)
 
 ## CLI

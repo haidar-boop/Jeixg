@@ -1,4 +1,4 @@
-"""Web API layer (FastAPI). Optional dependency: imported lazily."""
+"""Web API layer. Optional web deps (FastAPI / Flask) are imported lazily."""
 from .service import PlatformService
 
 
@@ -8,4 +8,10 @@ def create_app(service=None):
     return _create_app(service)
 
 
-__all__ = ["PlatformService", "create_app"]
+def create_wsgi_app(service=None):
+    """Lazy wrapper for the Flask WSGI app (PythonAnywhere / gunicorn)."""
+    from .wsgi import create_wsgi_app as _create_wsgi_app
+    return _create_wsgi_app(service)
+
+
+__all__ = ["PlatformService", "create_app", "create_wsgi_app"]

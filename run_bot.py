@@ -87,8 +87,11 @@ def main(argv: list[str] | None = None) -> None:
                         help="starting cash for the paper broker")
     parser.add_argument("--interval", type=int, default=60,
                         help="seconds between cycles in loop mode")
-    parser.add_argument("--once", action="store_true",
-                        help="run a single cycle then exit (for cron/schedulers)")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--once", action="store_true",
+                      help="run a single cycle then exit (for cron/schedulers)")
+    mode.add_argument("--loop", action="store_true",
+                      help="run continuously (the default; explicit for clarity)")
     args = parser.parse_args(argv)
 
     setup_logging(level=get_config().get("logging.level", "INFO"))
