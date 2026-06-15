@@ -1,0 +1,19 @@
+# Core runtime dependencies (the platform's engine runs with just these).
+numpy>=1.24
+pandas>=2.0
+PyYAML>=6.0
+SQLAlchemy>=2.0
+scikit-learn>=1.3
+scipy>=1.10
+
+# --- Optional extras (install as needed) ---------------------------------
+# Web API + dashboard backend
+#   pip install "fastapi>=0.110" "uvicorn[standard]>=0.27" pydantic>=2
+# Market data
+#   pip install yfinance
+# Secret encryption
+#   pip install cryptography
+# Live brokers (each optional)
+#   pip install alpaca-trade-api ib_insync requests
+# Deep learning / NLP (heavy, optional)
+#   pip install tensorflow transformers torch

@@ -1,0 +1,51 @@
+# QuantTrade local stack: API engine + Postgres + Redis + dashboard.
+# Usage: docker compose up --build
+services:
+  api:
+    build: .
+    image: quanttrade:latest
+    env_file: .env
+    environment:
+      QT_DATABASE__URL: postgresql+psycopg://quant:quant@db:5432/quanttrade
+      QT_API__HOST: 0.0.0.0
+      QT_API__PORT: "8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: quant
+      POSTGRES_PASSWORD: quant
+      POSTGRES_DB: quanttrade
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quant"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  dashboard:
+    build:
+      context: ./dashboard
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    profiles: ["frontend"]
+
+volumes:
+  pgdata:
