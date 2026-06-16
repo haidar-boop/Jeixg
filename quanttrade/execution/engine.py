@@ -17,12 +17,11 @@ from datetime import datetime, timezone
 import pandas as pd
 
 from ..brokers.base import Broker
-from ..core.enums import OrderSide, OrderType, SignalType
+from ..core.enums import OrderSide, OrderType, PositionSide, SignalType
 from ..core.logging_config import get_logger
 from ..data.base import MarketDataProvider
-from ..models import Fill, Order, Signal
+from ..models import Order, Signal
 from ..notifications import Notifier, create_notifier
-from ..portfolio import Portfolio
 from ..risk import FixedRiskSizer, PositionSizer, RiskManager
 from ..strategies.base import Strategy, StrategyContext
 
@@ -53,16 +52,22 @@ class TradingEngine:
         self.notifier = notifier or create_notifier()
         self.history_bars = history_bars
         self._history: dict[str, pd.DataFrame] = {}
-        # Trade journal used purely to detect round-trips and their P&L so we can
-        # alert the user; the broker remains the accounting authority.
-        self.portfolio = Portfolio(starting_cash=0.0)
+        self._last_prices: dict[str, float] = {}
+        # Snapshot of broker positions {symbol: (quantity, avg_price, last_price)}
+        # used to detect fills (entries/exits) for trade alerts. Broker-agnostic:
+        # works whether fills are synchronous (paper) or delayed (live brokers).
+        self._pos_snapshot: dict[str, tuple[float, float, float]] = {}
         self._running = False
 
     def start(self) -> None:
         if not self.broker.is_connected:
             self.broker.connect()
         equity = self.broker.get_account().equity
-        self.portfolio = Portfolio(starting_cash=equity)
+        # Seed the snapshot so pre-existing positions don't trigger fake alerts.
+        self._pos_snapshot = {
+            p.symbol: (p.quantity, p.avg_price, p.last_price)
+            for p in self.broker.get_positions()
+        }
         self.risk.start_day(equity)
         self._running = True
         logger.info("TradingEngine started: %s on %s via %s",
@@ -83,6 +88,7 @@ class TradingEngine:
         self._history[symbol] = bar
         bar.attrs["symbol"] = symbol
         price = float(bar["close"].iloc[-1])
+        self._last_prices[symbol] = price
 
         account = self.broker.get_account()
         self.risk.update_equity(account.equity)
@@ -104,41 +110,61 @@ class TradingEngine:
                 continue
             self.broker.submit_order(order)
             submitted.append(order)
-            self._record_and_notify(order)
+
+        # Detect any fills (this symbol or others) and text the user.
+        self._reconcile_and_notify()
         return submitted
 
-    def _record_and_notify(self, order: Order) -> None:
-        """If an order filled, journal it and text the user (entry or P&L exit)."""
-        if not order.is_filled or order.filled_quantity <= 0:
-            return
-        fill = Fill(
-            order_id=order.id, symbol=order.symbol, side=order.side,
-            quantity=order.filled_quantity, price=order.avg_fill_price,
-            commission=order.commission,
-        )
-        trades_before = len(self.portfolio.trades)
-        self.portfolio.apply_fill(fill, strategy=self.strategy.name)
+    def _reconcile_and_notify(self) -> None:
+        """Compare broker positions to the last snapshot and alert on changes.
 
-        if len(self.portfolio.trades) > trades_before:
-            self._notify_exit(self.portfolio.trades[-1])
-        else:
-            self._notify_entry(fill)
+        Works for any broker: a freshly opened/added position triggers an
+        "opened" text; a reduced/closed position triggers a "closed" text with
+        the realized profit or loss.
+        """
+        current = self.broker.get_positions()
+        cur_map = {p.symbol: p for p in current}
 
-    def _notify_entry(self, fill: Fill) -> None:
-        verb = "BUY" if fill.side == OrderSide.BUY else "SELL"
+        # Entries / adds: position grew (in absolute size).
+        for sym, pos in cur_map.items():
+            old_qty = self._pos_snapshot.get(sym, (0.0, 0.0, 0.0))[0]
+            if abs(pos.quantity) > abs(old_qty) + 1e-9:
+                self._notify_entry(sym, pos.side, abs(pos.quantity) - abs(old_qty),
+                                   pos.avg_price)
+
+        # Exits / reduces: position shrank or disappeared -> realized P&L.
+        for sym, (old_qty, old_avg, old_last) in self._pos_snapshot.items():
+            cur = cur_map.get(sym)
+            cur_qty = cur.quantity if cur else 0.0
+            if abs(cur_qty) < abs(old_qty) - 1e-9:
+                closed = abs(old_qty) - abs(cur_qty)
+                exit_price = self._last_prices.get(sym, old_last) or old_avg
+                direction = 1.0 if old_qty > 0 else -1.0
+                pnl = (exit_price - old_avg) * closed * direction
+                self._notify_exit(sym, closed, exit_price, pnl, old_avg)
+
+        self._pos_snapshot = {
+            p.symbol: (p.quantity, p.avg_price, p.last_price) for p in current
+        }
+
+    def _notify_entry(self, symbol: str, side: PositionSide, qty: float,
+                      price: float) -> None:
+        verb = "BUY" if side == PositionSide.LONG else "SELL"
         self.notifier.send(
             "QuantTrade: opened",
-            f"{verb} {fill.quantity:g} {fill.symbol} @ ${fill.price:,.2f} "
-            f"({self.strategy.name})",
+            f"{verb} {qty:g} {symbol} @ ${price:,.2f} ({self.strategy.name})",
         )
 
-    def _notify_exit(self, trade) -> None:
-        result = "WON" if trade.pnl >= 0 else "LOST"
-        sign = "+" if trade.pnl >= 0 else "-"
+    def _notify_exit(self, symbol: str, qty: float, exit_price: float, pnl: float,
+                     entry_price: float) -> None:
+        result = "WON" if pnl >= 0 else "LOST"
+        sign = "+" if pnl >= 0 else "-"
+        cost = entry_price * qty
+        ret = pnl / cost if cost else 0.0
         self.notifier.send(
-            f"QuantTrade: closed {trade.symbol} ({result})",
-            f"Sold {trade.quantity:g} {trade.symbol} @ ${trade.exit_price:,.2f} | "
-            f"{result} {sign}${abs(trade.pnl):,.2f} ({trade.return_pct:+.2%})",
+            f"QuantTrade: closed {symbol} ({result})",
+            f"Sold {qty:g} {symbol} @ ${exit_price:,.2f} | "
+            f"{result} {sign}${abs(pnl):,.2f} ({ret:+.2%})",
         )
 
     def run_once(self) -> dict[str, list[Order]]:

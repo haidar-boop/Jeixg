@@ -48,9 +48,11 @@ def _engine_with(notifier):
 def test_entry_notification():
     cap = RecordingNotifier()
     eng, broker = _engine_with(cap)
-    order = Order(symbol="AAPL", side=OrderSide.BUY, quantity=10, order_type=OrderType.MARKET)
-    broker.submit_order(order)
-    eng._record_and_notify(order)
+    broker.update_price("AAPL", 100.0)
+    broker.submit_order(Order(symbol="AAPL", side=OrderSide.BUY, quantity=10,
+                              order_type=OrderType.MARKET))
+    eng._last_prices["AAPL"] = 100.0
+    eng._reconcile_and_notify()
     bodies = [m for _, m in cap.messages]
     assert any("BUY 10 AAPL" in b for b in bodies)
 
@@ -58,14 +60,33 @@ def test_entry_notification():
 def test_exit_notification_reports_profit():
     cap = RecordingNotifier()
     eng, broker = _engine_with(cap)
-    buy = Order(symbol="AAPL", side=OrderSide.BUY, quantity=10, order_type=OrderType.MARKET)
-    broker.submit_order(buy)
-    eng._record_and_notify(buy)
+    broker.update_price("AAPL", 100.0)
+    broker.submit_order(Order(symbol="AAPL", side=OrderSide.BUY, quantity=10,
+                              order_type=OrderType.MARKET))
+    eng._last_prices["AAPL"] = 100.0
+    eng._reconcile_and_notify()  # records the entry; snapshot now has 10 @ 100
     broker.update_price("AAPL", 110.0)
-    sell = Order(symbol="AAPL", side=OrderSide.SELL, quantity=10, order_type=OrderType.MARKET)
-    broker.submit_order(sell)
-    eng._record_and_notify(sell)
+    broker.submit_order(Order(symbol="AAPL", side=OrderSide.SELL, quantity=10,
+                              order_type=OrderType.MARKET))
+    eng._last_prices["AAPL"] = 110.0
+    eng._reconcile_and_notify()
     subjects = [s for s, _ in cap.messages]
     bodies = [m for _, m in cap.messages]
     assert any("WON" in s for s in subjects)
     assert any("+$100.00" in b for b in bodies)
+
+
+def test_loss_notification():
+    cap = RecordingNotifier()
+    eng, broker = _engine_with(cap)
+    broker.update_price("AAPL", 100.0)
+    broker.submit_order(Order(symbol="AAPL", side=OrderSide.BUY, quantity=10,
+                              order_type=OrderType.MARKET))
+    eng._last_prices["AAPL"] = 100.0
+    eng._reconcile_and_notify()
+    broker.update_price("AAPL", 90.0)
+    broker.submit_order(Order(symbol="AAPL", side=OrderSide.SELL, quantity=10,
+                              order_type=OrderType.MARKET))
+    eng._last_prices["AAPL"] = 90.0
+    eng._reconcile_and_notify()
+    assert any("LOST" in s for s, _ in cap.messages)
