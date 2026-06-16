@@ -27,7 +27,7 @@ broker:
 risk:
   max_daily_loss_pct: 0.03      # halt trading after a 3% loss in a day
   max_drawdown_pct: 0.20        # halt trading on a 20% peak-to-trough drawdown
-  max_position_pct: 0.10        # max 10% of equity in any one position
+  max_position_pct: 0.20        # max 20% of equity in any one position
   max_gross_exposure_pct: 1.5   # max 150% gross exposure (allows modest leverage)
   max_sector_pct: 0.30          # max 30% of equity in any one sector
   max_correlation: 0.85         # block adding highly correlated exposure
