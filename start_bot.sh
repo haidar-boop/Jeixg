@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 #
-# Start the QuantTrade bot in PAPER mode (simulated money - zero risk).
+# Start the QuantTrade bot.
+#
+# Currently configured for ALPACA PAPER TRADING (real broker, simulated money,
+# zero financial risk) using real market data. To go back to the fully offline
+# simulator, set BROKER="paper" and PROVIDER="synthetic" below.
 #
 # How to use it:
 #     bash start_bot.sh
 #
 # Press Ctrl-C to stop it.
-#
-# When you are ready for a real broker's paper account (Alpaca) or live trading,
-# see docs/pythonanywhere.md - you only change the two settings marked below.
 
 set -uo pipefail
 cd "$(dirname "$0")"
@@ -22,15 +23,15 @@ fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
 
-# ----- Settings you can change later -------------------------------------
+# ----- Settings you can change ------------------------------------------
 STRATEGY="ma_crossover"             # which strategy to trade
 SYMBOLS="AAPL,MSFT,GOOG"            # which stocks to watch
-BROKER="paper"                      # "paper" = built-in simulator (change to "alpaca" later)
-PROVIDER="synthetic"                # "synthetic" = offline data (change to "yfinance" for real data)
+BROKER="alpaca"                     # "alpaca" = your Alpaca paper account | "paper" = offline simulator
+PROVIDER="yfinance"                 # "yfinance" = real market data | "synthetic" = offline test data
 INTERVAL="60"                       # seconds between each check
 # -------------------------------------------------------------------------
 
-echo "Starting the bot in PAPER mode. Press Ctrl-C to stop."
+echo "Starting the bot ($BROKER, $PROVIDER data). Press Ctrl-C to stop."
 python run_bot.py --loop \
   --strategy "$STRATEGY" \
   --symbols "$SYMBOLS" \
