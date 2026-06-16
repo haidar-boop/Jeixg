@@ -20,7 +20,9 @@ from ..brokers.base import Broker
 from ..core.enums import OrderSide, OrderType, SignalType
 from ..core.logging_config import get_logger
 from ..data.base import MarketDataProvider
-from ..models import Order, Signal
+from ..models import Fill, Order, Signal
+from ..notifications import Notifier, create_notifier
+from ..portfolio import Portfolio
 from ..risk import FixedRiskSizer, PositionSizer, RiskManager
 from ..strategies.base import Strategy, StrategyContext
 
@@ -39,6 +41,7 @@ class TradingEngine:
         *,
         sizer: PositionSizer | None = None,
         risk_manager: RiskManager | None = None,
+        notifier: Notifier | None = None,
         history_bars: int = 200,
     ) -> None:
         self.strategy = strategy
@@ -47,18 +50,25 @@ class TradingEngine:
         self.symbols = symbols
         self.sizer = sizer or FixedRiskSizer(0.01)
         self.risk = risk_manager or RiskManager()
+        self.notifier = notifier or create_notifier()
         self.history_bars = history_bars
         self._history: dict[str, pd.DataFrame] = {}
+        # Trade journal used purely to detect round-trips and their P&L so we can
+        # alert the user; the broker remains the accounting authority.
+        self.portfolio = Portfolio(starting_cash=0.0)
         self._running = False
 
     def start(self) -> None:
         if not self.broker.is_connected:
             self.broker.connect()
         equity = self.broker.get_account().equity
+        self.portfolio = Portfolio(starting_cash=equity)
         self.risk.start_day(equity)
         self._running = True
         logger.info("TradingEngine started: %s on %s via %s",
                     self.strategy.name, self.symbols, self.broker.name)
+        self.notifier.send("QuantTrade", f"Bot started: {self.strategy.name} "
+                                         f"on {','.join(self.symbols)} via {self.broker.name}")
 
     def stop(self) -> None:
         self._running = False
@@ -94,7 +104,42 @@ class TradingEngine:
                 continue
             self.broker.submit_order(order)
             submitted.append(order)
+            self._record_and_notify(order)
         return submitted
+
+    def _record_and_notify(self, order: Order) -> None:
+        """If an order filled, journal it and text the user (entry or P&L exit)."""
+        if not order.is_filled or order.filled_quantity <= 0:
+            return
+        fill = Fill(
+            order_id=order.id, symbol=order.symbol, side=order.side,
+            quantity=order.filled_quantity, price=order.avg_fill_price,
+            commission=order.commission,
+        )
+        trades_before = len(self.portfolio.trades)
+        self.portfolio.apply_fill(fill, strategy=self.strategy.name)
+
+        if len(self.portfolio.trades) > trades_before:
+            self._notify_exit(self.portfolio.trades[-1])
+        else:
+            self._notify_entry(fill)
+
+    def _notify_entry(self, fill: Fill) -> None:
+        verb = "BUY" if fill.side == OrderSide.BUY else "SELL"
+        self.notifier.send(
+            "QuantTrade: opened",
+            f"{verb} {fill.quantity:g} {fill.symbol} @ ${fill.price:,.2f} "
+            f"({self.strategy.name})",
+        )
+
+    def _notify_exit(self, trade) -> None:
+        result = "WON" if trade.pnl >= 0 else "LOST"
+        sign = "+" if trade.pnl >= 0 else "-"
+        self.notifier.send(
+            f"QuantTrade: closed {trade.symbol} ({result})",
+            f"Sold {trade.quantity:g} {trade.symbol} @ ${trade.exit_price:,.2f} | "
+            f"{result} {sign}${abs(trade.pnl):,.2f} ({trade.return_pct:+.2%})",
+        )
 
     def run_once(self) -> dict[str, list[Order]]:
         """Poll the latest history for every symbol and process one step each."""
