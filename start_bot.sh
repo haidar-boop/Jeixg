@@ -24,7 +24,7 @@ fi
 source .venv/bin/activate
 
 # ----- Settings you can change ------------------------------------------
-STRATEGY="ma_crossover"             # which strategy to trade
+STRATEGY="rsi_reversion"            # which strategy to trade (active dip-buyer)
 SYMBOLS="AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ"  # stocks to watch
 BROKER="alpaca"                     # "alpaca" = your Alpaca paper account | "paper" = offline simulator
 PROVIDER="yfinance"                 # "yfinance" = real market data | "synthetic" = offline test data

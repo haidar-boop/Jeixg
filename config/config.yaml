@@ -12,6 +12,7 @@ app:
 trading:
   mode: paper               # paper | live | backtest | forward_test
   base_currency: USD
+  strategy: rsi_reversion   # strategy shown on the dashboard watchlist
 
 data:
   provider: synthetic       # synthetic | yfinance
