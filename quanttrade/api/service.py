@@ -55,8 +55,33 @@ class PlatformService:
 
     # --- views consumed by the REST layer ------------------------------
     def health(self) -> dict:
-        return {"status": "ok", "bootstrapped": self._result is not None,
-                "universe": self.universe}
+        return {"status": "ok", "mode": "demo", "bootstrapped": self._result is not None,
+                "broker": "paper", "broker_connected": True, "universe": self.universe}
+
+    def account(self) -> dict:
+        p = self.portfolio()
+        if not self._result:
+            return {"equity": self.starting_cash, "cash": self.starting_cash,
+                    "buying_power": self.starting_cash * 2, "positions_value": 0.0,
+                    "day_pnl": 0.0, "day_pnl_pct": 0.0, "unrealized_pnl": 0.0,
+                    "num_positions": 0, "status": "DEMO", "pattern_day_trader": False}
+        pf = self._result.portfolio
+        return {
+            "equity": p["equity"], "cash": p["cash"], "buying_power": round(p["cash"] * 2, 2),
+            "positions_value": p["positions_value"], "day_pnl": p["day_pnl"],
+            "day_pnl_pct": round(p["day_pnl"] / max(p["equity"], 1), 4),
+            "unrealized_pnl": round(pf.unrealized_pnl, 2), "num_positions": len(pf.positions),
+            "status": "DEMO", "pattern_day_trader": False,
+        }
+
+    def orders(self, limit: int = 50) -> list[dict]:
+        return []
+
+    def clock(self) -> dict:
+        return {"is_open": None}
+
+    def watchlist(self) -> list[dict]:
+        return []
 
     def portfolio(self) -> dict:
         if not self._result:

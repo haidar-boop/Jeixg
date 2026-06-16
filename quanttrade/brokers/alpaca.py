@@ -247,3 +247,37 @@ class AlpacaBroker(Broker):
                 realized_pnl=0.0,
             ))
         return positions
+
+    # --- live dashboard extras -----------------------------------------
+    def get_account_raw(self) -> dict[str, Any]:
+        """Raw Alpaca account payload (includes ``last_equity`` for day P&L)."""
+        return self._request("GET", "/v2/account") or {}
+
+    def get_recent_orders(self, limit: int = 50) -> list[Order]:
+        """Most recent orders of any status (newest first)."""
+        data = self._request("GET", "/v2/orders", params={
+            "status": "all", "limit": limit, "direction": "desc",
+        })
+        return [self._from_broker_order(o) for o in (data or [])]
+
+    def get_portfolio_history(self, period: str = "1M",
+                              timeframe: str = "1D") -> list[dict[str, Any]]:
+        """Account equity time-series for the dashboard chart."""
+        data = self._request("GET", "/v2/account/portfolio/history", params={
+            "period": period, "timeframe": timeframe,
+        }) or {}
+        stamps = data.get("timestamp") or []
+        equity = data.get("equity") or []
+        out: list[dict[str, Any]] = []
+        for ts, eq in zip(stamps, equity):
+            if eq is None:
+                continue
+            out.append({
+                "timestamp": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(),
+                "equity": float(eq),
+            })
+        return out
+
+    def get_clock(self) -> dict[str, Any]:
+        """Market clock: is it open, and the next open/close times."""
+        return self._request("GET", "/v2/clock") or {}

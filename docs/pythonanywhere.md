@@ -105,7 +105,8 @@ Python 3.11.
 Then set:
 
 - **Virtualenv**: `/home/<USER>/.virtualenvs/quanttrade`
-- **WSGI configuration file** (click to edit) — replace contents with:
+- **WSGI configuration file** (click to edit) — replace contents with the
+  following to show your **live Alpaca account** on the dashboard:
 
   ```python
   import sys
@@ -113,10 +114,12 @@ Then set:
   if path not in sys.path:
       sys.path.insert(0, path)
 
-  # Optional: configuration / secrets
   import os
-  os.environ.setdefault("QT_TRADING__MODE", "paper")
-  # os.environ["QT_SECRET_KEY"] = "..."        # for live, set securely
+  # Make the dashboard read your live Alpaca paper account + real market data.
+  os.environ["QT_BROKER__NAME"] = "alpaca"
+  os.environ["QT_DATA__PROVIDER"] = "yfinance"
+  os.environ["QT_SYMBOLS"] = "AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ"
+  # Alpaca / Twilio keys are read from ~/Jeixg/.env automatically.
 
   from quanttrade.api.wsgi import application   # noqa: E402
   ```
@@ -127,10 +130,10 @@ Then set:
 Click **Reload**. Your dashboard is now at `https://<USER>.pythonanywhere.com/`
 and the API at `https://<USER>.pythonanywhere.com/api/health`.
 
-> The React app calls `/api/...` on the same origin, so no extra config is
-> needed. The `/ws` WebSocket simply won't connect on PA — the UI loads fine via
-> REST and just won't auto-refresh; add a manual refresh or short polling if you
-> want near-live updates.
+> The dashboard auto-refreshes every 20s by polling the API (PythonAnywhere
+> doesn't support WebSockets, so there's no instant push — the periodic refresh
+> and the ↻ button keep it current). If `/api/health` shows `"mode": "live"` and
+> `"broker_connected": true`, it's reading your real Alpaca account.
 
 ## 6. Going live later (after paper testing)
 
