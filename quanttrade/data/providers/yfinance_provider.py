@@ -70,3 +70,32 @@ class YFinanceDataProvider(MarketDataProvider):
         df = raw[["open", "high", "low", "close", "volume"]].copy()
         df.index.name = "timestamp"
         return df
+
+    def get_multiple(self, symbols, start, end, interval=BarInterval.DAY_1):
+        """Batch-download many symbols in ONE request (much faster for the
+        dashboard). Falls back to per-symbol fetches if the batch call fails."""
+        import yfinance as yf
+
+        symbols = list(symbols)
+        if len(symbols) <= 1:
+            return super().get_multiple(symbols, start, end, interval)
+        try:
+            raw = yf.download(
+                symbols, start=start, end=end,
+                interval=_INTERVAL_MAP.get(interval, "1d"),
+                progress=False, auto_adjust=True, group_by="ticker", threads=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("yfinance batch failed (%s); falling back per-symbol", exc)
+            return super().get_multiple(symbols, start, end, interval)
+
+        out: dict = {}
+        for sym in symbols:
+            try:
+                sub = raw[sym].rename(columns=str.lower)
+                df = sub[["open", "high", "low", "close", "volume"]].dropna(how="all")
+                df.index.name = "timestamp"
+                out[sym] = df
+            except Exception:  # noqa: BLE001
+                out[sym] = self.get_historical_bars(sym, start, end, interval)
+        return out

@@ -17,6 +17,7 @@ returns empty rather than erroring, so the page always renders.
 """
 from __future__ import annotations
 
+import time
 from datetime import datetime, timedelta, timezone
 
 from ..brokers.base import Broker
@@ -43,23 +44,37 @@ class LivePlatformService:
         self.symbols = symbols
         self.strategy_name = strategy_name
         self.risk_limits = risk_limits or RiskLimits()
-        self._bars_cache: dict[str, tuple[datetime, object]] = {}
+        self._all_bars_cache: dict | None = None
+        self._all_bars_ts: float = 0.0
+        # Heavy results are cached so the dashboard never blocks on recompute.
+        self._cache: dict[str, tuple[float, object]] = {}
 
     # --- helpers --------------------------------------------------------
     def _ensure_connected(self) -> None:
         if not self.broker.is_connected:
             self.broker.connect()
 
-    def _bars(self, symbol: str, days: int = 300):
-        """Cached daily bars per symbol (5-min freshness)."""
-        now = datetime.now(timezone.utc)
-        hit = self._bars_cache.get(symbol)
-        if hit and (now - hit[0]).total_seconds() < 300:
+    def _all_bars(self, days: int = 260) -> dict:
+        """One cached batch fetch of daily bars for the whole symbol list.
+
+        Shared by the watchlist, scanner and predictions so a dashboard refresh
+        makes a single data request (not one per symbol), refreshed every 5 min.
+        """
+        if self._all_bars_cache is not None and (time.time() - self._all_bars_ts) < 300:
+            return self._all_bars_cache
+        end = datetime.now(timezone.utc)
+        self._all_bars_cache = self.provider.get_multiple(
+            self.symbols, end - timedelta(days=days), end, BarInterval.DAY_1)
+        self._all_bars_ts = time.time()
+        return self._all_bars_cache
+
+    def _cached(self, key: str, ttl: float, producer):
+        hit = self._cache.get(key)
+        if hit and (time.time() - hit[0]) < ttl:
             return hit[1]
-        df = self.provider.get_historical_bars(
-            symbol, now - timedelta(days=days * 2), now, BarInterval.DAY_1)
-        self._bars_cache[symbol] = (now, df)
-        return df
+        value = producer()
+        self._cache[key] = (time.time(), value)
+        return value
 
     def _positions_map(self) -> dict:
         self._ensure_connected()
@@ -176,15 +191,19 @@ class LivePlatformService:
                 pass
         return {"is_open": None}
 
-    # --- analytics ------------------------------------------------------
+    # --- analytics (all share one cached batch fetch; cheap to call) -----
     def watchlist(self) -> list[dict]:
         """What the bot 'sees' now: current signal + key indicators per symbol."""
+        return self._cached("watchlist", 120, self._compute_watchlist)
+
+    def _compute_watchlist(self) -> list[dict]:
         strategy = StrategyRegistry.create(self.strategy_name)
         positions = self._positions_map()
+        bars = self._all_bars()
         rows = []
         for symbol in self.symbols:
             try:
-                df = self._bars(symbol)
+                df = bars.get(symbol)
                 if df is None or len(df) < getattr(strategy, "warmup", 50):
                     continue
                 df = df.copy()
@@ -232,16 +251,23 @@ class LivePlatformService:
         }
 
     def predictions(self) -> list[dict]:
+        # Model training is CPU-heavy -> cache for 30 min.
+        return self._cached("predictions", 1800, self._compute_predictions)
+
+    def _compute_predictions(self) -> list[dict]:
         from ..ml import FeatureEngineer, RandomForestModel
         fe = FeatureEngineer()
+        bars = self._all_bars()
         out = []
-        for symbol in self.symbols[:8]:
+        for symbol in self.symbols[:6]:
             try:
-                df = self._bars(symbol)
+                df = bars.get(symbol)
+                if df is None:
+                    continue
                 X, y = fe.build_dataset(df, horizon=5)
                 if len(X) < 60:
                     continue
-                model = RandomForestModel(n_estimators=120).fit(X.iloc[:-1], y.iloc[:-1])
+                model = RandomForestModel(n_estimators=100).fit(X.iloc[:-1], y.iloc[:-1])
                 proba = model.predict_proba(X.iloc[[-1]])[0]
                 up = float(proba[1]) if len(proba) > 1 else float(proba[0])
                 out.append({"symbol": symbol,
@@ -252,7 +278,21 @@ class LivePlatformService:
         return out
 
     def scanner(self, top_n: int = 15) -> list[dict]:
-        results = MarketScanner(self.provider).scan(self.symbols, top_n=top_n)
+        rows = self._cached("scanner", 120, self._compute_scanner)
+        return rows[:top_n]
+
+    def _compute_scanner(self) -> list[dict]:
+        scanner = MarketScanner(self.provider)
+        bars = self._all_bars()
+        results = []
+        for symbol, df in bars.items():
+            try:
+                res = scanner._score_symbol(symbol, df)  # reuse scoring, no refetch
+                if res is not None:
+                    results.append(res)
+            except Exception:  # noqa: BLE001
+                logger.exception("scan failed for %s", symbol)
+        results.sort(key=lambda r: r.score, reverse=True)
         return [{"symbol": r.symbol, "score": r.score, "reason": r.reason,
                  "price": r.price, "change_pct": r.change_pct, "metrics": r.metrics}
                 for r in results]
