@@ -124,8 +124,31 @@ def _daily_summary(engine, state: dict) -> None:
         f"({pct:+.2%}) | {n_pos} positions held.")
 
 
+def _update_watchlist_snapshot(engine, state: dict) -> None:
+    """Compute the watchlist and write it for the dashboard (throttled to 5 min)."""
+    if time.time() - state.get("wl_ts", 0) < 300:
+        return
+    try:
+        from datetime import timedelta
+
+        from quanttrade.api.snapshot import build_watchlist_rows, write_watchlist
+        from quanttrade.core.enums import BarInterval
+        symbols = getattr(engine, "universe", None) or getattr(engine, "symbols", [])
+        if not symbols:
+            return
+        end = datetime.now()
+        bars = engine.data.get_multiple(symbols, end - timedelta(days=260), end, BarInterval.DAY_1)
+        positions = {p.symbol: p for p in engine.broker.get_positions()}
+        rows = build_watchlist_rows(bars, positions, engine.strategy.name)
+        write_watchlist(rows)
+        state["wl_ts"] = time.time()
+    except Exception:  # noqa: BLE001
+        logger.exception("watchlist snapshot failed")
+
+
 def run_cycle(engine, control: ControlStore, state: dict, stop_pct: float) -> None:
     _write_heartbeat()
+    _update_watchlist_snapshot(engine, state)
     broker = engine.broker
     open_now = is_market_open(broker)
 

@@ -197,38 +197,8 @@ class LivePlatformService:
         return self._cached("watchlist", 120, self._compute_watchlist)
 
     def _compute_watchlist(self) -> list[dict]:
-        strategy = StrategyRegistry.create(self.strategy_name)
-        positions = self._positions_map()
-        bars = self._all_bars()
-        rows = []
-        for symbol in self.symbols:
-            try:
-                df = bars.get(symbol)
-                if df is None or len(df) < getattr(strategy, "warmup", 50):
-                    continue
-                df = df.copy()
-                df.attrs["symbol"] = symbol
-                last = float(df["close"].iloc[-1])
-                prev = float(df["close"].iloc[-2]) if len(df) > 1 else last
-                ctx = StrategyContext(positions=positions)
-                signals = strategy.generate_signals(df, ctx)
-                signal = signals[0].type.value if signals else SignalType.HOLD.value
-                cur_rsi = float(rsi(df["close"]).iloc[-1])
-                trend = str(detect_trend(df["close"]).iloc[-1])
-                held = symbol in positions and abs(positions[symbol].quantity) > 1e-9
-                rows.append({
-                    "symbol": symbol,
-                    "last_price": round(last, 2),
-                    "change_pct": round(last / prev - 1, 4) if prev else 0.0,
-                    "signal": signal,
-                    "rsi": round(cur_rsi, 1),
-                    "trend": trend,
-                    "held": held,
-                    "position_qty": round(positions[symbol].quantity, 4) if held else 0,
-                })
-            except Exception:  # noqa: BLE001
-                logger.exception("watchlist failed for %s", symbol)
-        return rows
+        from .snapshot import build_watchlist_rows
+        return build_watchlist_rows(self._all_bars(), self._positions_map(), self.strategy_name)
 
     def strategies(self) -> list[dict]:
         a = self.account()

@@ -142,6 +142,11 @@ def create_wsgi_app(service=None, dist_dir: Path | None = None):
 
     @app.get("/api/watchlist")
     def watchlist():
+        # Prefer the snapshot the bot writes (reliable); fall back to computing.
+        from .snapshot import read_watchlist
+        rows = read_watchlist()
+        if rows is not None:
+            return jsonify(rows)
         return serve("watchlist")
 
     @app.get("/api/clock")

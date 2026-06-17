@@ -45,3 +45,4 @@ approvals.json
 heartbeat.txt
 control.json
 .health_alerted
+watchlist.json
