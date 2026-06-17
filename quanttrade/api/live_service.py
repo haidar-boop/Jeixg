@@ -20,7 +20,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from ..brokers.base import Broker
-from ..core.enums import BarInterval, SignalType
+from ..core.enums import BarInterval, OrderStatus, SignalType
 from ..core.logging_config import get_logger
 from ..data.base import MarketDataProvider
 from ..indicators import rsi
@@ -124,12 +124,18 @@ class LivePlatformService:
             })
         return out
 
-    def orders(self, limit: int = 50) -> list[dict]:
+    def orders(self, limit: int = 50, include_inactive: bool = False) -> list[dict]:
+        """Orders straight from the broker. Cancelled/expired/rejected orders are
+        hidden by default, so deleting an order on Alpaca makes it disappear here
+        on the next refresh."""
         self._ensure_connected()
         if not hasattr(self.broker, "get_recent_orders"):
             return []
+        hidden = {OrderStatus.CANCELLED, OrderStatus.EXPIRED, OrderStatus.REJECTED}
         out = []
         for o in self.broker.get_recent_orders(limit):
+            if not include_inactive and o.status in hidden:
+                continue
             out.append({
                 "symbol": o.symbol,
                 "side": o.side.value,
