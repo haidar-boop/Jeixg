@@ -25,7 +25,11 @@ logger = get_logger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DASHBOARD_DIST = PROJECT_ROOT / "dashboard" / "dist"
 LIVE_BROKERS = {"alpaca", "tradier", "interactive_brokers", "ibkr"}
-DEFAULT_SYMBOLS = ("AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ")
+DEFAULT_SYMBOLS = (
+    "AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ,"
+    "AVGO,COST,HD,BAC,DIS,PYPL,INTC,CRM,PFE,KO,PEP,CSCO,ORCL,ADBE,QCOM,"
+    "UBER,SHOP,COIN,PLTR,SOFI,BA,GE,F,T,MU"
+)
 
 # Endpoints whose results are expensive to compute -> cache briefly.
 CACHE_TTL = 30.0

@@ -118,7 +118,7 @@ Then set:
   # Make the dashboard read your live Alpaca paper account + real market data.
   os.environ["QT_BROKER__NAME"] = "alpaca"
   os.environ["QT_DATA__PROVIDER"] = "yfinance"
-  os.environ["QT_SYMBOLS"] = "AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ"
+  os.environ["QT_SYMBOLS"] = "AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ,AVGO,COST,HD,BAC,DIS,PYPL,INTC,CRM,PFE,KO,PEP,CSCO,ORCL,ADBE,QCOM,UBER,SHOP,COIN,PLTR,SOFI,BA,GE,F,T,MU"
   # Alpaca / Twilio keys are read from ~/Jeixg/.env automatically.
 
   from quanttrade.api.wsgi import application   # noqa: E402
