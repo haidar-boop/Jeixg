@@ -48,5 +48,5 @@ else
   ARGS+=(--auto-symbols "$ALL_STOCKS")    # everything auto-trades; no permission texts
 fi
 
-echo "Starting the bot ($BROKER, $PROVIDER, approval=$APPROVAL). Press Ctrl-C to stop."
+echo "Starting the bot ($BROKER, $PROVIDER, ask_permission=$ASK_PERMISSION). Press Ctrl-C to stop."
 python run_bot.py "${ARGS[@]}"
