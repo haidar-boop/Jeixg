@@ -53,7 +53,8 @@ class RSIReversion(Strategy):
         symbol = data.attrs.get("symbol", "")
         if r < self.lower and not context.has_position(symbol):
             return [Signal(symbol, SignalType.BUY, strength=(self.lower - r) / self.lower,
-                           price=price, stop_loss=price * 0.95, strategy=self.name)]
+                           price=price, stop_loss=price * 0.95, strategy=self.name,
+                           metadata={"reason": f"RSI {r:.0f}, oversold"})]
         if context.has_position(symbol) and r > self.exit_level:
             return [Signal(symbol, SignalType.CLOSE, price=price, strategy=self.name)]
         return []

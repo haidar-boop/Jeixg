@@ -164,6 +164,30 @@ When you're ready to trade real money through a broker (e.g. Alpaca):
 > mode first; markets are unpredictable and you can lose money. Trade at your own
 > risk.
 
+## 7. Two-way SMS trade approval
+
+The bot can scan a universe of stocks and **text you for permission** before
+buying ("I found NVDA @ $120 (RSI 27, oversold). Reply YES to buy or NO to
+skip."). You reply YES/NO and it acts. Exits are handled automatically.
+
+Enable it:
+
+1. In `start_bot.sh`, keep `APPROVAL="yes"` (the default). Restart the bot task.
+2. Tell Twilio where to deliver your replies: in the Twilio Console open your
+   phone number's settings → **Messaging** → *"A MESSAGE COMES IN"* → set it to
+   **Webhook**, **HTTP POST**, URL:
+
+   ```
+   https://<USER>.pythonanywhere.com/sms
+   ```
+
+   Save. (This requires the dashboard web app from section 5 to be running, since
+   it receives the replies.)
+
+Now when the bot finds an opportunity it texts you; your YES/NO reply is sent by
+Twilio to `/sms`, recorded, and the bot buys on its next scan if you approved.
+Only your verified number (`QT_TWILIO_TO`) is accepted.
+
 ## Troubleshooting
 
 | Symptom | Fix |

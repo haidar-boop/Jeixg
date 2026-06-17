@@ -28,12 +28,20 @@ from quanttrade.core.config import get_config
 from quanttrade.core.logging_config import get_logger, setup_logging
 from quanttrade.data import create_data_provider
 from quanttrade.execution import TradingEngine
+from quanttrade.execution.approval_engine import ApprovalTradingEngine
 from quanttrade.risk import FixedRiskSizer, RiskLimits, RiskManager
 from quanttrade.strategies import StrategyRegistry  # noqa: F401
 import quanttrade.strategies  # noqa: F401  (registers built-in strategies)
 
 logger = get_logger("run_bot")
 _RUNNING = True
+
+# A broad pool of liquid US stocks/ETFs to hunt across in approval mode.
+DEFAULT_UNIVERSE = (
+    "AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ,"
+    "AVGO,COST,HD,BAC,DIS,PYPL,INTC,CRM,PFE,KO,PEP,CSCO,ORCL,ADBE,QCOM,"
+    "UBER,SHOP,COIN,PLTR,SOFI,BA,GE,F,T,MU"
+)
 
 
 def _handle_signal(signum, _frame):
@@ -42,7 +50,7 @@ def _handle_signal(signum, _frame):
     _RUNNING = False
 
 
-def build_engine(args) -> TradingEngine:
+def build_engine(args):
     cfg = get_config()
     broker = create_broker(
         args.broker,
@@ -53,26 +61,36 @@ def build_engine(args) -> TradingEngine:
     strategy = StrategyRegistry.create(args.strategy)
     risk = RiskManager(RiskLimits.from_config(cfg))
     sizer = FixedRiskSizer(risk_pct=cfg.get("risk.default_risk_per_trade_pct", 0.01))
-    engine = TradingEngine(
-        strategy=strategy,
-        broker=broker,
-        data_provider=data,
-        symbols=[s.strip().upper() for s in args.symbols.split(",")],
-        sizer=sizer,
-        risk_manager=risk,
-    )
+
+    if args.require_approval:
+        universe = [s.strip().upper() for s in (args.universe or args.symbols).split(",") if s.strip()]
+        engine = ApprovalTradingEngine(
+            strategy=strategy, broker=broker, data_provider=data, universe=universe,
+            sizer=sizer, risk_manager=risk,
+        )
+    else:
+        engine = TradingEngine(
+            strategy=strategy, broker=broker, data_provider=data,
+            symbols=[s.strip().upper() for s in args.symbols.split(",")],
+            sizer=sizer, risk_manager=risk,
+        )
     engine.start()
     return engine
 
 
-def run_cycle(engine: TradingEngine) -> None:
+def run_cycle(engine) -> None:
     results = engine.run_once()
     account = engine.broker.get_account()
-    submitted = sum(len(orders) for orders in results.values())
-    logger.info("Cycle done | equity=%.2f cash=%.2f orders=%d positions=%d%s",
-                account.equity, account.cash, submitted,
-                len(engine.broker.get_positions()),
-                " | HALTED: " + engine.risk.halt_reason if engine.risk.halted else "")
+    positions = len(engine.broker.get_positions())
+    halted = " | HALTED: " + engine.risk.halt_reason if engine.risk.halted else ""
+    if isinstance(results, dict) and "outstanding" in results:
+        waiting = " | awaiting your YES/NO reply" if results["outstanding"] else ""
+        logger.info("Cycle done | equity=%.2f positions=%d%s%s",
+                    account.equity, positions, waiting, halted)
+    else:
+        submitted = sum(len(orders) for orders in results.values())
+        logger.info("Cycle done | equity=%.2f cash=%.2f orders=%d positions=%d%s",
+                    account.equity, account.cash, submitted, positions, halted)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -87,6 +105,10 @@ def main(argv: list[str] | None = None) -> None:
                         help="starting cash for the paper broker")
     parser.add_argument("--interval", type=int, default=60,
                         help="seconds between cycles in loop mode")
+    parser.add_argument("--require-approval", action="store_true",
+                        help="scan the universe and text for YES/NO approval before buying")
+    parser.add_argument("--universe", default=DEFAULT_UNIVERSE,
+                        help="comma-separated tickers to scan in approval mode")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--once", action="store_true",
                       help="run a single cycle then exit (for cron/schedulers)")

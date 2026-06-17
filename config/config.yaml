@@ -32,7 +32,7 @@ risk:
   max_gross_exposure_pct: 1.5   # max 150% gross exposure (allows modest leverage)
   max_sector_pct: 0.30          # max 30% of equity in any one sector
   max_correlation: 0.85         # block adding highly correlated exposure
-  default_risk_per_trade_pct: 0.01
+  default_risk_per_trade_pct: 0.0075   # ~15% position with a 5% stop (under the 20% cap)
   kelly_fraction: 0.5           # fractional Kelly multiplier
 
 database:

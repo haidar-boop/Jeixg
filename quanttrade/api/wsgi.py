@@ -64,6 +64,15 @@ def _build_service():
     return demo
 
 
+def _twiml(message: str):
+    """Build a Twilio TwiML SMS reply response."""
+    from flask import Response
+
+    xml = (f'<?xml version="1.0" encoding="UTF-8"?>'
+           f'<Response><Message>{message}</Message></Response>')
+    return Response(xml, mimetype="text/xml")
+
+
 def create_wsgi_app(service=None, dist_dir: Path | None = None):
     """Build the Flask WSGI application."""
     try:
@@ -150,6 +159,31 @@ def create_wsgi_app(service=None, dist_dir: Path | None = None):
     @app.get("/api/scanner")
     def scanner():
         return serve("scanner", request.args.get("top_n", 15, type=int))
+
+    # --- Twilio inbound SMS webhook (two-way trade approval) -----------
+    @app.post("/sms")
+    def sms_webhook():
+        import os
+
+        from ..notifications.approvals import ApprovalStore, parse_reply
+
+        from_number = request.form.get("From", "")
+        body = request.form.get("Body", "")
+        allowed = os.getenv("QT_TWILIO_TO", "")
+        # Only accept commands from the owner's verified phone number.
+        if allowed and from_number and from_number != allowed:
+            logger.warning("Ignoring SMS from unauthorized number %s", from_number)
+            return _twiml("Sorry, this number isn't authorized.")
+
+        decision, symbol = parse_reply(body)
+        if decision is None:
+            return _twiml("Reply YES to buy the stock I found, or NO to skip.")
+        req = ApprovalStore().record_decision(decision, symbol)
+        if req is None:
+            return _twiml("No trade is waiting for approval right now.")
+        if decision:
+            return _twiml(f"Got it — buying {req['symbol']} on the next check. ✅")
+        return _twiml(f"Okay, skipping {req['symbol']}. 👍")
 
     # --- Serve the built React SPA -------------------------------------
     @app.get("/")

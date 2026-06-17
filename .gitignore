@@ -37,3 +37,6 @@ dashboard/dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Trade approval queue (runtime state)
+approvals.json

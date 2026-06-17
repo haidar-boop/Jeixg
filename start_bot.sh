@@ -25,16 +25,21 @@ source .venv/bin/activate
 
 # ----- Settings you can change ------------------------------------------
 STRATEGY="rsi_reversion"            # which strategy to trade (active dip-buyer)
-SYMBOLS="AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ"  # stocks to watch
 BROKER="alpaca"                     # "alpaca" = your Alpaca paper account | "paper" = offline simulator
 PROVIDER="yfinance"                 # "yfinance" = real market data | "synthetic" = offline test data
-INTERVAL="60"                       # seconds between each check
+INTERVAL="120"                      # seconds between each scan
+APPROVAL="yes"                      # "yes" = text you for YES/NO before buying | "no" = buy automatically
+# Stocks to hunt across (leave blank to use the built-in 40-stock list).
+SYMBOLS=""
 # -------------------------------------------------------------------------
 
-echo "Starting the bot ($BROKER, $PROVIDER data). Press Ctrl-C to stop."
-python run_bot.py --loop \
-  --strategy "$STRATEGY" \
-  --symbols "$SYMBOLS" \
-  --broker "$BROKER" \
-  --provider "$PROVIDER" \
-  --interval "$INTERVAL"
+ARGS=(--loop --strategy "$STRATEGY" --broker "$BROKER" --provider "$PROVIDER" --interval "$INTERVAL")
+if [ "$APPROVAL" = "yes" ]; then
+  ARGS+=(--require-approval)
+  [ -n "$SYMBOLS" ] && ARGS+=(--universe "$SYMBOLS")
+else
+  ARGS+=(--symbols "${SYMBOLS:-AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ}")
+fi
+
+echo "Starting the bot ($BROKER, $PROVIDER, approval=$APPROVAL). Press Ctrl-C to stop."
+python run_bot.py "${ARGS[@]}"
