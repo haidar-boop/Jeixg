@@ -176,11 +176,22 @@ class ApprovalTradingEngine:
                            f"BUY {qty:g} {symbol} @ ~${price:,.2f} ({tag})")
         return True, "ok"
 
+    def _held_or_pending(self) -> set[str]:
+        """Symbols we already own OR have an unfilled order for (don't re-buy)."""
+        blocked = {p.symbol for p in self.broker.get_positions()
+                   if abs(p.quantity) > 1e-9}
+        try:
+            blocked |= {o.symbol for o in self.broker.get_open_orders()}
+        except Exception:  # noqa: BLE001 - some brokers may not list orders
+            logger.exception("could not fetch open orders")
+        return blocked
+
     def _auto_buy_trusted(self, equity: float) -> None:
         """Trade the trusted core stocks automatically -- no approval needed."""
         positions = {p.symbol: p for p in self.broker.get_positions()}
+        blocked = self._held_or_pending()
         for symbol in self.auto_symbols:
-            if symbol in positions and abs(positions[symbol].quantity) > 1e-9:
+            if symbol in blocked:
                 continue
             try:
                 signal, price = self._signal_for(symbol, positions)
@@ -191,14 +202,15 @@ class ApprovalTradingEngine:
                 ok, reason = self._buy(symbol, price, signal.stop_loss, equity,
                                        positions, approved=False)
                 if ok:
-                    positions[symbol] = True  # avoid double-buy within the loop
+                    blocked.add(symbol)  # don't buy it again until it fills
 
     def _execute_approved(self) -> None:
         positions = {p.symbol: p for p in self.broker.get_positions()}
         equity = self.broker.get_account().equity
+        blocked = self._held_or_pending()
         for req in self.store.pop_approved():
             symbol = req["symbol"]
-            if symbol in positions and abs(positions[symbol].quantity) > 1e-9:
+            if symbol in blocked:
                 self.store.mark_executed(symbol)
                 continue
             ok, reason = self._buy(symbol, float(req.get("price") or 0.0),
@@ -209,9 +221,10 @@ class ApprovalTradingEngine:
 
     def _scan_and_request(self, equity: float) -> None:
         positions = {p.symbol: p for p in self.broker.get_positions()}
+        blocked = self._held_or_pending()
         best = None  # (strength, symbol, price, reason, stop)
         for symbol in self.ask_symbols:
-            if symbol in positions and abs(positions[symbol].quantity) > 1e-9:
+            if symbol in blocked:
                 continue
             if self.store.in_cooldown(symbol, self.cooldown):
                 continue

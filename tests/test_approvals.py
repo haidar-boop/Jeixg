@@ -90,3 +90,45 @@ def test_sms_webhook(tmp_path, monkeypatch):
     ok = client.post("/sms", data={"From": "+15551234567", "Body": "YES"})
     assert b"buying AAPL" in ok.data
     assert [r["symbol"] for r in ApprovalStore().pop_approved()] == ["AAPL"]
+
+
+def test_no_double_buy_when_order_pending(tmp_path):
+    """Regression: don't re-buy a symbol that has an unfilled (pending) order."""
+    from quanttrade.brokers import PaperBroker
+    from quanttrade.core.enums import OrderSide, OrderType, SignalType
+    from quanttrade.data import create_data_provider
+    from quanttrade.execution.approval_engine import ApprovalTradingEngine
+    from quanttrade.models import Order, Signal
+    from quanttrade.notifications import Notifier
+    from quanttrade.risk import FixedRiskSizer, RiskLimits, RiskManager
+    from quanttrade.strategies.base import Strategy
+
+    class Quiet(Notifier):
+        name = "q"
+        def _send(self, s, m): ...
+
+    class AlwaysBuy(Strategy):
+        warmup = 1
+        def generate_signals(self, data, ctx):
+            price = float(data["close"].iloc[-1])
+            return [Signal(data.attrs.get("symbol", ""), SignalType.BUY, strength=0.9,
+                           price=price, stop_loss=price * 0.95, metadata={"reason": "x"})]
+
+    broker = PaperBroker(starting_cash=100_000, commission_per_share=0, slippage_bps=0)
+    broker.connect()
+    broker.update_price("AAPL", 100.0)
+    # A resting limit order = an open/pending order for AAPL.
+    broker.submit_order(Order(symbol="AAPL", side=OrderSide.BUY, quantity=5,
+                              order_type=OrderType.LIMIT, limit_price=50.0))
+    eng = ApprovalTradingEngine(
+        AlwaysBuy(), broker, create_data_provider("synthetic"), ["AAPL"],
+        auto_symbols=["AAPL"], notifier=Quiet(),
+        store=ApprovalStore(tmp_path / "a.json"),
+        sizer=FixedRiskSizer(0.0075, fractional=True),
+        risk_manager=RiskManager(RiskLimits(max_position_pct=0.5)),
+    )
+    eng.start()
+    eng._auto_buy_trusted(100_000)
+    eng._auto_buy_trusted(100_000)
+    assert len(broker.get_open_orders()) == 1   # no extra market orders stacked
+    assert broker.get_positions() == []          # nothing filled
