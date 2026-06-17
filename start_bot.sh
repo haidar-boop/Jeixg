@@ -28,30 +28,24 @@ STRATEGY="rsi_reversion"            # which strategy to trade (active dip-buyer)
 BROKER="alpaca"                     # "alpaca" = your Alpaca paper account | "paper" = offline simulator
 PROVIDER="yfinance"                 # "yfinance" = real market data | "synthetic" = offline test data
 INTERVAL="120"                      # seconds between each scan
-APPROVAL="yes"                      # "yes" = ask before buying NON-core stocks | "no" = buy everything automatically
-ASK_FOR_OTHERS="no"                 # "yes" = scan wider list & text you for permission | "no" = trade ONLY your core list (no permission texts)
+ASK_PERMISSION="no"                 # "no" = auto-trade ALL stocks (no permission texts) | "yes" = auto-trade CORE, text for permission on the rest
 MAX_CAPITAL="1000"                  # most money the bot may deploy (e.g. 1000). Use "0" for no cap.
 STOP_LOSS_PCT="0.08"                # protective stop placed under each position (0.08 = 8%; "0" = off)
 
-# Your trusted core: these are traded AUTOMATICALLY, no text permission needed.
+# The full list of stocks the bot trades.
+ALL_STOCKS="AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ,AVGO,COST,HD,BAC,DIS,PYPL,INTC,CRM,PFE,KO,PEP,CSCO,ORCL,ADBE,QCOM,UBER,SHOP,COIN,PLTR,SOFI,BA,GE,F,T,MU"
+# When ASK_PERMISSION="yes", these are auto-traded and the REST need your YES/NO.
 CORE_STOCKS="AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ"
-# Wider pool to also hunt across; anything here NOT in CORE_STOCKS will text you
-# for YES/NO approval. Leave blank to use the built-in 40-stock pool.
-EXTRA_SCAN=""
 # -------------------------------------------------------------------------
 
-ARGS=(--loop --strategy "$STRATEGY" --broker "$BROKER" --provider "$PROVIDER" --interval "$INTERVAL")
+# Always uses the approval engine (keeps protective stops + SELL ALL kill-switch).
+ARGS=(--loop --strategy "$STRATEGY" --broker "$BROKER" --provider "$PROVIDER" --interval "$INTERVAL" --require-approval)
 [ "$MAX_CAPITAL" != "0" ] && ARGS+=(--max-capital "$MAX_CAPITAL")
-ARGS+=(--stop-loss-pct "$STOP_LOSS_PCT")
-if [ "$APPROVAL" = "yes" ]; then
-  ARGS+=(--require-approval --auto-symbols "$CORE_STOCKS")
-  if [ "$ASK_FOR_OTHERS" = "yes" ]; then
-    [ -n "$EXTRA_SCAN" ] && ARGS+=(--universe "$EXTRA_SCAN")
-  else
-    ARGS+=(--universe "$CORE_STOCKS")   # no non-core symbols -> no permission texts
-  fi
+ARGS+=(--stop-loss-pct "$STOP_LOSS_PCT" --universe "$ALL_STOCKS")
+if [ "$ASK_PERMISSION" = "yes" ]; then
+  ARGS+=(--auto-symbols "$CORE_STOCKS")   # core auto-trades; the rest text you
 else
-  ARGS+=(--symbols "$CORE_STOCKS")
+  ARGS+=(--auto-symbols "$ALL_STOCKS")    # everything auto-trades; no permission texts
 fi
 
 echo "Starting the bot ($BROKER, $PROVIDER, approval=$APPROVAL). Press Ctrl-C to stop."
