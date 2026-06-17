@@ -188,6 +188,32 @@ Now when the bot finds an opportunity it texts you; your YES/NO reply is sent by
 Twilio to `/sms`, recorded, and the bot buys on its next scan if you approved.
 Only your verified number (`QT_TWILIO_TO`) is accepted.
 
+**Text commands you can send any time:**
+
+| Text | Effect |
+|------|--------|
+| `YES` / `NO` | approve / skip the stock the bot just found |
+| `STOP` (or `PAUSE`) | halt all new buying |
+| `RESUME` (or `START`) | resume trading |
+| `SELL ALL` (or `FLATTEN`) | close every position and cancel open orders |
+
+## 8. Crash / health alert (scheduled task)
+
+The bot writes a heartbeat every cycle. Add a **Scheduled task** (Tasks page →
+*Scheduled tasks*, hourly) so you get a text if it ever stops during market
+hours:
+
+```
+/home/<USER>/Jeixg/.venv/bin/python /home/<USER>/Jeixg/scripts/health_check.py
+```
+
+The bot also texts you automatically if it fails to start or hits repeated
+errors, and sends a **daily summary** at the close (equity + day P&L + positions).
+
+Protective stop-losses (default 8% under each position) are placed at the broker,
+so a position is protected even if the bot goes down. Adjust `STOP_LOSS_PCT` in
+`start_bot.sh` (or `risk.protective_stop_pct` in config).
+
 ## Troubleshooting
 
 | Symptom | Fix |

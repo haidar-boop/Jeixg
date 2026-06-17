@@ -29,12 +29,21 @@ from quanttrade.core.logging_config import get_logger, setup_logging
 from quanttrade.data import create_data_provider
 from quanttrade.execution import TradingEngine
 from quanttrade.execution.approval_engine import ApprovalTradingEngine
+from quanttrade.execution.market_hours import is_market_open
+from quanttrade.notifications.control import ControlStore
 from quanttrade.risk import FixedRiskSizer, RiskLimits, RiskManager
 from quanttrade.strategies import StrategyRegistry  # noqa: F401
 import quanttrade.strategies  # noqa: F401  (registers built-in strategies)
 
+from datetime import datetime
+from pathlib import Path
+
 logger = get_logger("run_bot")
 _RUNNING = True
+
+# Heartbeat file: updated every cycle so an external health check can tell the
+# bot is alive (see scripts/health_check.py).
+HEARTBEAT_PATH = Path(__file__).resolve().parent / "heartbeat.txt"
 
 # The trusted core: traded automatically, no approval needed.
 DEFAULT_AUTO = "AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ"
@@ -88,19 +97,64 @@ def build_engine(args):
     return engine
 
 
-def run_cycle(engine) -> None:
-    results = engine.run_once()
-    account = engine.broker.get_account()
-    positions = len(engine.broker.get_positions())
-    halted = " | HALTED: " + engine.risk.halt_reason if engine.risk.halted else ""
-    if isinstance(results, dict) and "outstanding" in results:
-        waiting = " | awaiting your YES/NO reply" if results["outstanding"] else ""
-        logger.info("Cycle done | equity=%.2f positions=%d%s%s",
-                    account.equity, positions, waiting, halted)
-    else:
-        submitted = sum(len(orders) for orders in results.values())
-        logger.info("Cycle done | equity=%.2f cash=%.2f orders=%d positions=%d%s",
-                    account.equity, account.cash, submitted, positions, halted)
+def _write_heartbeat() -> None:
+    try:
+        HEARTBEAT_PATH.write_text(str(time.time()))
+    except OSError:  # pragma: no cover
+        logger.debug("could not write heartbeat")
+
+
+def _daily_summary(engine, state: dict) -> None:
+    """Text an end-of-day summary when the market closes."""
+    broker = engine.broker
+    try:
+        acct = broker.get_account()
+        raw = broker.get_account_raw() if hasattr(broker, "get_account_raw") else {}
+        last_eq = float(raw.get("last_equity") or acct.equity)
+        day_pnl = acct.equity - last_eq
+        n_pos = len([p for p in broker.get_positions() if abs(p.quantity) > 1e-9])
+    except Exception:  # noqa: BLE001
+        logger.exception("daily summary failed")
+        return
+    sign = "+" if day_pnl >= 0 else "-"
+    pct = (day_pnl / last_eq) if last_eq else 0.0
+    engine.notifier.send(
+        "QuantTrade daily summary",
+        f"Market closed. Equity ${acct.equity:,.2f} | day P&L {sign}${abs(day_pnl):,.2f} "
+        f"({pct:+.2%}) | {n_pos} positions held.")
+
+
+def run_cycle(engine, control: ControlStore, state: dict, stop_pct: float) -> None:
+    _write_heartbeat()
+    broker = engine.broker
+    open_now = is_market_open(broker)
+
+    # Kill-switch: "SELL ALL" texted -> flatten everything.
+    if control.pop_flatten() and hasattr(engine, "flatten_all"):
+        n = engine.flatten_all()
+        engine.notifier.send("QuantTrade",
+                             f"Flattened: sold {n} positions and cancelled open orders.")
+
+    # Daily summary fires exactly when the session flips open -> closed.
+    if state.get("market_was_open") and not open_now:
+        _daily_summary(engine, state)
+    state["market_was_open"] = open_now
+
+    if not open_now:
+        logger.info("Market closed - idle (no trading).")
+        return
+    if control.is_halted():
+        logger.info("Trading halted (you texted STOP) - skipping buys.")
+        return
+
+    engine.run_once()
+    if hasattr(engine, "protect_positions"):
+        engine.protect_positions(stop_pct)
+
+    account = broker.get_account()
+    logger.info("Cycle done | equity=%.2f positions=%d",
+                account.equity, len([p for p in broker.get_positions()
+                                     if abs(p.quantity) > 1e-9]))
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -123,6 +177,8 @@ def main(argv: list[str] | None = None) -> None:
                         help="full pool to scan; non-core tickers need approval")
     parser.add_argument("--max-capital", type=float, default=0.0,
                         help="cap total money the bot will deploy (0 = no cap)")
+    parser.add_argument("--stop-loss-pct", type=float, default=-1.0,
+                        help="protective stop distance, e.g. 0.08 (default: config)")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--once", action="store_true",
                       help="run a single cycle then exit (for cron/schedulers)")
@@ -130,31 +186,57 @@ def main(argv: list[str] | None = None) -> None:
                       help="run continuously (the default; explicit for clarity)")
     args = parser.parse_args(argv)
 
-    setup_logging(level=get_config().get("logging.level", "INFO"))
+    cfg = get_config()
+    setup_logging(level=cfg.get("logging.level", "INFO"))
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    engine = build_engine(args)
-    logger.info("Bot started: %s on %s via %s broker (%s data)",
-                args.strategy, args.symbols, args.broker, args.provider)
+    stop_pct = (args.stop_loss_pct if args.stop_loss_pct >= 0
+                else float(cfg.get("risk.protective_stop_pct", 0.08) or 0.0))
+    control = ControlStore()
+    state: dict = {}
+
+    try:
+        engine = build_engine(args)
+    except Exception:  # noqa: BLE001 - startup failure -> alert and exit
+        logger.exception("Bot failed to start")
+        _alert("QuantTrade ALERT: the bot failed to start. Check the logs.")
+        raise
+
+    logger.info("Bot started: %s | broker=%s data=%s | stop=%.0f%%",
+                args.strategy, args.broker, args.provider, stop_pct * 100)
 
     if args.once:
-        run_cycle(engine)
+        run_cycle(engine, control, state, stop_pct)
         engine.stop()
         return
 
+    errors = 0
     while _RUNNING:
         try:
-            run_cycle(engine)
-        except Exception:  # noqa: BLE001 - keep the bot alive across transient errors
-            logger.exception("Cycle failed; continuing")
-        # Sleep in short slices so signals are handled promptly.
+            run_cycle(engine, control, state, stop_pct)
+            errors = 0
+        except Exception:  # noqa: BLE001 - survive transient errors, alert if persistent
+            errors += 1
+            logger.exception("Cycle failed (%d in a row); continuing", errors)
+            if errors == 3:
+                _alert("QuantTrade ALERT: the bot hit repeated errors but is still "
+                       "retrying. Check the PythonAnywhere task log.")
         for _ in range(args.interval):
             if not _RUNNING:
                 break
             time.sleep(1)
     engine.stop()
     logger.info("Bot stopped cleanly")
+
+
+def _alert(message: str) -> None:
+    """Best-effort SMS alert that never raises."""
+    try:
+        from quanttrade.notifications import create_notifier
+        create_notifier().send("QuantTrade", message)
+    except Exception:  # noqa: BLE001
+        logger.exception("could not send alert")
 
 
 if __name__ == "__main__":

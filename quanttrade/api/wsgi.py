@@ -180,8 +180,23 @@ def create_wsgi_app(service=None, dist_dir: Path | None = None):
             return _twiml("Sorry, this number isn't authorized.")
 
         decision, symbol = parse_reply(body)
+        text = (body or "").strip().lower()
+
+        # Control commands take priority over yes/no.
+        from ..notifications.control import ControlStore
+        ctrl = ControlStore()
+        if text in {"stop", "halt", "pause"}:
+            ctrl.set_halt(True)
+            return _twiml("⏸ Trading paused. Text RESUME to start again, or SELL ALL to close everything.")
+        if text in {"resume", "start", "go", "unpause"}:
+            ctrl.set_halt(False)
+            return _twiml("▶️ Trading resumed.")
+        if text in {"sell all", "sellall", "flatten", "close all", "closeall"}:
+            ctrl.request_flatten()
+            return _twiml("Selling all positions and cancelling open orders on the next check.")
+
         if decision is None:
-            return _twiml("Reply YES to buy the stock I found, or NO to skip.")
+            return _twiml("Reply YES/NO to a stock I found, or STOP / RESUME / SELL ALL.")
         req = ApprovalStore().record_decision(decision, symbol)
         if req is None:
             return _twiml("No trade is waiting for approval right now.")

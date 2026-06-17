@@ -35,6 +35,7 @@ risk:
   max_correlation: 0.85         # block adding highly correlated exposure
   default_risk_per_trade_pct: 0.0075   # ~15% position with a 5% stop (under the 20% cap)
   kelly_fraction: 0.5           # fractional Kelly multiplier
+  protective_stop_pct: 0.08     # broker-side stop-loss placed under each position (0 = off)
 
 database:
   url: sqlite:///quanttrade.db  # e.g. postgresql+psycopg://user:pass@host/db

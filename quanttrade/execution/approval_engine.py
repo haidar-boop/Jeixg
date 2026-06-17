@@ -134,13 +134,23 @@ class ApprovalTradingEngine:
             if signal and signal.type in {SignalType.CLOSE, SignalType.SELL}:
                 self._sell(symbol, pos, price or pos.last_price)
 
+    def _cancel_symbol_orders(self, symbol: str) -> None:
+        """Cancel any resting orders for a symbol (e.g. its protective stop)."""
+        try:
+            for o in self.broker.get_open_orders():
+                if o.symbol == symbol:
+                    self.broker.cancel_order(o.broker_order_id or o.id)
+        except Exception:  # noqa: BLE001
+            logger.exception("could not cancel orders for %s", symbol)
+
     def _sell(self, symbol: str, pos, price: float) -> None:
+        self._cancel_symbol_orders(symbol)  # avoid an orphaned protective stop
         side = OrderSide.SELL if pos.quantity > 0 else OrderSide.BUY
         order = Order(symbol=symbol, side=side, quantity=abs(pos.quantity),
                       order_type=OrderType.MARKET, strategy=self.strategy.name)
         try:
             self.broker.submit_order(order)
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.exception("sell failed for %s", symbol)
             return
         pnl = (price - pos.avg_price) * pos.quantity
@@ -151,6 +161,48 @@ class ApprovalTradingEngine:
             f"Auto-sold {abs(pos.quantity):g} {symbol} @ ${price:,.2f} | "
             f"{result} {sign}${abs(pnl):,.2f}",
         )
+
+    # --- safety controls (used by run_bot) ------------------------------
+    def flatten_all(self) -> int:
+        """Cancel all open orders and sell every position. Returns # sold."""
+        try:
+            for o in self.broker.get_open_orders():
+                self.broker.cancel_order(o.broker_order_id or o.id)
+        except Exception:  # noqa: BLE001
+            logger.exception("cancel-all failed")
+        positions = [p for p in self.broker.get_positions() if abs(p.quantity) > 1e-9]
+        for pos in positions:
+            price = self._last_price(pos.symbol) or pos.last_price
+            self._sell(pos.symbol, pos, price)
+        return len(positions)
+
+    def protect_positions(self, stop_pct: float) -> None:
+        """Ensure each long position has a protective stop order at the broker."""
+        if stop_pct <= 0:
+            return
+        try:
+            protected = {o.symbol for o in self.broker.get_open_orders()}
+        except Exception:  # noqa: BLE001
+            protected = set()
+        for pos in self.broker.get_positions():
+            if pos.quantity <= 0 or pos.symbol in protected:
+                continue
+            stop_price = round(pos.avg_price * (1 - stop_pct), 2)
+            order = Order(symbol=pos.symbol, side=OrderSide.SELL, quantity=abs(pos.quantity),
+                          order_type=OrderType.STOP, stop_price=stop_price,
+                          strategy=self.strategy.name)
+            try:
+                self.broker.submit_order(order)
+                logger.info("Protective stop for %s @ $%.2f", pos.symbol, stop_price)
+            except Exception:  # noqa: BLE001
+                logger.exception("could not place protective stop for %s", pos.symbol)
+
+    def _last_price(self, symbol: str) -> float:
+        try:
+            df = self._get_bars(symbol)
+            return float(df["close"].iloc[-1]) if df is not None and len(df) else 0.0
+        except Exception:  # noqa: BLE001
+            return 0.0
 
     def _investable(self, equity: float) -> float:
         """Equity the bot is allowed to size against (capped by max_capital)."""

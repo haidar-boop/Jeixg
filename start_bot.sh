@@ -30,6 +30,7 @@ PROVIDER="yfinance"                 # "yfinance" = real market data | "synthetic
 INTERVAL="120"                      # seconds between each scan
 APPROVAL="yes"                      # "yes" = ask before buying NON-core stocks | "no" = buy everything automatically
 MAX_CAPITAL="1000"                  # most money the bot may deploy (e.g. 1000). Use "0" for no cap.
+STOP_LOSS_PCT="0.08"                # protective stop placed under each position (0.08 = 8%; "0" = off)
 
 # Your trusted core: these are traded AUTOMATICALLY, no text permission needed.
 CORE_STOCKS="AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ"
@@ -40,6 +41,7 @@ EXTRA_SCAN=""
 
 ARGS=(--loop --strategy "$STRATEGY" --broker "$BROKER" --provider "$PROVIDER" --interval "$INTERVAL")
 [ "$MAX_CAPITAL" != "0" ] && ARGS+=(--max-capital "$MAX_CAPITAL")
+ARGS+=(--stop-loss-pct "$STOP_LOSS_PCT")
 if [ "$APPROVAL" = "yes" ]; then
   ARGS+=(--require-approval --auto-symbols "$CORE_STOCKS")
   [ -n "$EXTRA_SCAN" ] && ARGS+=(--universe "$EXTRA_SCAN")

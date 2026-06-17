@@ -40,3 +40,8 @@ dashboard/dist/
 
 # Trade approval queue (runtime state)
 approvals.json
+
+# Runtime state files
+heartbeat.txt
+control.json
+.health_alerted

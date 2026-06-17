@@ -175,7 +175,12 @@ class PaperBroker(Broker):
             self._positions.pop(order.symbol, None)
 
     def cancel_order(self, order_id: str) -> bool:
+        # Accept either the internal id or the broker_order_id ("paper-...") so
+        # callers can cancel orders returned by get_open_orders uniformly.
         order = self._orders.get(order_id)
+        if order is None:
+            order = next((o for o in self._orders.values()
+                          if o.broker_order_id == order_id), None)
         if order and order.is_active:
             order.status = OrderStatus.CANCELLED
             order.updated_at = self._clock
