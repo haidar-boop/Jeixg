@@ -45,6 +45,7 @@ class ApprovalTradingEngine:
         risk_manager: RiskManager | None = None,
         notifier: Notifier | None = None,
         store: ApprovalStore | None = None,
+        max_capital: float = 0.0,
         pending_ttl: float = 3600.0,
         cooldown: float = 3600.0,
         bars_cache_ttl: float = 600.0,
@@ -62,6 +63,8 @@ class ApprovalTradingEngine:
         self.risk = risk_manager or RiskManager()
         self.notifier = notifier or create_notifier()
         self.store = store or ApprovalStore()
+        # Cap how much the bot will deploy regardless of account size (0 = no cap).
+        self.max_capital = max_capital
         self.pending_ttl = pending_ttl
         self.cooldown = cooldown
         self.bars_cache_ttl = bars_cache_ttl
@@ -149,10 +152,14 @@ class ApprovalTradingEngine:
             f"{result} {sign}${abs(pnl):,.2f}",
         )
 
+    def _investable(self, equity: float) -> float:
+        """Equity the bot is allowed to size against (capped by max_capital)."""
+        return min(equity, self.max_capital) if self.max_capital else equity
+
     def _buy(self, symbol: str, price: float, stop: float | None, equity: float,
              positions: dict, *, approved: bool) -> tuple[bool, str]:
         """Size, risk-check and place a buy. Returns (success, reason)."""
-        qty = self.sizer.size(equity=equity, price=price, stop_price=stop)
+        qty = self.sizer.size(equity=self._investable(equity), price=price, stop_price=stop)
         if qty <= 0:
             return False, "size 0"
         order = Order(symbol=symbol, side=OrderSide.BUY, quantity=qty,

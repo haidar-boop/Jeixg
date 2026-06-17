@@ -32,10 +32,15 @@ class FixedRiskSizer(PositionSizer):
     """Risk a fixed fraction of equity *per trade*, defined by the stop distance.
 
     shares = (equity * risk_pct) / |entry - stop|
+
+    With ``fractional=True`` (for brokers that support fractional shares, like
+    Alpaca) the quantity isn't floored to whole shares -- important for small
+    accounts where a whole share would exceed the budget.
     """
 
-    def __init__(self, risk_pct: float = 0.01) -> None:
+    def __init__(self, risk_pct: float = 0.01, fractional: bool = False) -> None:
         self.risk_pct = risk_pct
+        self.fractional = fractional
 
     def size(self, *, equity: float, price: float, stop_price: float | None = None,
              **kwargs) -> float:
@@ -44,7 +49,10 @@ class FixedRiskSizer(PositionSizer):
         risk_per_share = abs(price - stop_price)
         if risk_per_share <= 0:
             return 0.0
-        return math.floor((equity * self.risk_pct) / risk_per_share)
+        shares = (equity * self.risk_pct) / risk_per_share
+        # Never let a single position exceed the available budget.
+        shares = min(shares, equity / price)
+        return round(shares, 4) if self.fractional else math.floor(shares)
 
 
 class VolatilitySizer(PositionSizer):

@@ -24,6 +24,7 @@ broker:
   starting_cash: 100000.0
   commission_per_share: 0.005
   slippage_bps: 1.0
+  max_capital: 0            # cap total $ the bot deploys (0 = no cap; e.g. 1000)
 
 risk:
   max_daily_loss_pct: 0.03      # halt trading after a 3% loss in a day

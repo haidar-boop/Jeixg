@@ -63,21 +63,27 @@ def build_engine(args):
     data = create_data_provider(args.provider)
     strategy = StrategyRegistry.create(args.strategy)
     risk = RiskManager(RiskLimits.from_config(cfg))
-    sizer = FixedRiskSizer(risk_pct=cfg.get("risk.default_risk_per_trade_pct", 0.01))
+    # Use fractional shares when the broker supports them (lets a small budget
+    # buy expensive stocks instead of rounding down to zero).
+    sizer = FixedRiskSizer(risk_pct=cfg.get("risk.default_risk_per_trade_pct", 0.01),
+                           fractional=getattr(broker, "supports_fractional", False))
+    max_capital = args.max_capital or float(cfg.get("broker.max_capital", 0) or 0)
 
     if args.require_approval:
         universe = [s.strip().upper() for s in (args.universe or args.symbols).split(",") if s.strip()]
         auto = [s.strip().upper() for s in args.auto_symbols.split(",") if s.strip()]
         engine = ApprovalTradingEngine(
             strategy=strategy, broker=broker, data_provider=data, universe=universe,
-            auto_symbols=auto, sizer=sizer, risk_manager=risk,
+            auto_symbols=auto, sizer=sizer, risk_manager=risk, max_capital=max_capital,
         )
     else:
         engine = TradingEngine(
             strategy=strategy, broker=broker, data_provider=data,
             symbols=[s.strip().upper() for s in args.symbols.split(",")],
-            sizer=sizer, risk_manager=risk,
+            sizer=sizer, risk_manager=risk, max_capital=max_capital,
         )
+    if max_capital:
+        logger.info("Capital cap: bot will deploy at most $%.2f", max_capital)
     engine.start()
     return engine
 
@@ -115,6 +121,8 @@ def main(argv: list[str] | None = None) -> None:
                         help="trusted tickers traded automatically (no approval)")
     parser.add_argument("--universe", default=DEFAULT_UNIVERSE,
                         help="full pool to scan; non-core tickers need approval")
+    parser.add_argument("--max-capital", type=float, default=0.0,
+                        help="cap total money the bot will deploy (0 = no cap)")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--once", action="store_true",
                       help="run a single cycle then exit (for cron/schedulers)")

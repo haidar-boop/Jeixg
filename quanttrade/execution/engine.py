@@ -41,6 +41,7 @@ class TradingEngine:
         sizer: PositionSizer | None = None,
         risk_manager: RiskManager | None = None,
         notifier: Notifier | None = None,
+        max_capital: float = 0.0,
         history_bars: int = 200,
     ) -> None:
         self.strategy = strategy
@@ -50,6 +51,7 @@ class TradingEngine:
         self.sizer = sizer or FixedRiskSizer(0.01)
         self.risk = risk_manager or RiskManager()
         self.notifier = notifier or create_notifier()
+        self.max_capital = max_capital
         self.history_bars = history_bars
         self._history: dict[str, pd.DataFrame] = {}
         self._last_prices: dict[str, float] = {}
@@ -195,7 +197,8 @@ class TradingEngine:
             return Order(symbol=symbol, side=side, quantity=abs(pos.quantity),
                          order_type=OrderType.MARKET, strategy=self.strategy.name)
         if signal.type in {SignalType.BUY, SignalType.SCALE_IN}:
-            qty = self.sizer.size(equity=equity, price=price, stop_price=signal.stop_loss)
+            investable = min(equity, self.max_capital) if self.max_capital else equity
+            qty = self.sizer.size(equity=investable, price=price, stop_price=signal.stop_loss)
             if qty <= 0:
                 return None
             return Order(symbol=symbol, side=OrderSide.BUY, quantity=qty,
