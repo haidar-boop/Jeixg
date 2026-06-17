@@ -29,6 +29,7 @@ BROKER="alpaca"                     # "alpaca" = your Alpaca paper account | "pa
 PROVIDER="yfinance"                 # "yfinance" = real market data | "synthetic" = offline test data
 INTERVAL="120"                      # seconds between each scan
 APPROVAL="yes"                      # "yes" = ask before buying NON-core stocks | "no" = buy everything automatically
+ASK_FOR_OTHERS="no"                 # "yes" = scan wider list & text you for permission | "no" = trade ONLY your core list (no permission texts)
 MAX_CAPITAL="1000"                  # most money the bot may deploy (e.g. 1000). Use "0" for no cap.
 STOP_LOSS_PCT="0.08"                # protective stop placed under each position (0.08 = 8%; "0" = off)
 
@@ -44,7 +45,11 @@ ARGS=(--loop --strategy "$STRATEGY" --broker "$BROKER" --provider "$PROVIDER" --
 ARGS+=(--stop-loss-pct "$STOP_LOSS_PCT")
 if [ "$APPROVAL" = "yes" ]; then
   ARGS+=(--require-approval --auto-symbols "$CORE_STOCKS")
-  [ -n "$EXTRA_SCAN" ] && ARGS+=(--universe "$EXTRA_SCAN")
+  if [ "$ASK_FOR_OTHERS" = "yes" ]; then
+    [ -n "$EXTRA_SCAN" ] && ARGS+=(--universe "$EXTRA_SCAN")
+  else
+    ARGS+=(--universe "$CORE_STOCKS")   # no non-core symbols -> no permission texts
+  fi
 else
   ARGS+=(--symbols "$CORE_STOCKS")
 fi
