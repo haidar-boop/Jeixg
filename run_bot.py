@@ -36,11 +36,14 @@ import quanttrade.strategies  # noqa: F401  (registers built-in strategies)
 logger = get_logger("run_bot")
 _RUNNING = True
 
-# A broad pool of liquid US stocks/ETFs to hunt across in approval mode.
+# The trusted core: traded automatically, no approval needed.
+DEFAULT_AUTO = "AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ"
+
+# A broader pool to hunt across; anything here NOT in the trusted core needs
+# your YES/NO approval before buying.
 DEFAULT_UNIVERSE = (
-    "AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ,"
-    "AVGO,COST,HD,BAC,DIS,PYPL,INTC,CRM,PFE,KO,PEP,CSCO,ORCL,ADBE,QCOM,"
-    "UBER,SHOP,COIN,PLTR,SOFI,BA,GE,F,T,MU"
+    DEFAULT_AUTO + ",AVGO,COST,HD,BAC,DIS,PYPL,INTC,CRM,PFE,KO,PEP,CSCO,ORCL,"
+    "ADBE,QCOM,UBER,SHOP,COIN,PLTR,SOFI,BA,GE,F,T,MU"
 )
 
 
@@ -64,9 +67,10 @@ def build_engine(args):
 
     if args.require_approval:
         universe = [s.strip().upper() for s in (args.universe or args.symbols).split(",") if s.strip()]
+        auto = [s.strip().upper() for s in args.auto_symbols.split(",") if s.strip()]
         engine = ApprovalTradingEngine(
             strategy=strategy, broker=broker, data_provider=data, universe=universe,
-            sizer=sizer, risk_manager=risk,
+            auto_symbols=auto, sizer=sizer, risk_manager=risk,
         )
     else:
         engine = TradingEngine(
@@ -106,9 +110,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--interval", type=int, default=60,
                         help="seconds between cycles in loop mode")
     parser.add_argument("--require-approval", action="store_true",
-                        help="scan the universe and text for YES/NO approval before buying")
+                        help="auto-trade the core list; text for YES/NO on the rest")
+    parser.add_argument("--auto-symbols", default=DEFAULT_AUTO,
+                        help="trusted tickers traded automatically (no approval)")
     parser.add_argument("--universe", default=DEFAULT_UNIVERSE,
-                        help="comma-separated tickers to scan in approval mode")
+                        help="full pool to scan; non-core tickers need approval")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--once", action="store_true",
                       help="run a single cycle then exit (for cron/schedulers)")

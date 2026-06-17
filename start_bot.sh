@@ -28,17 +28,21 @@ STRATEGY="rsi_reversion"            # which strategy to trade (active dip-buyer)
 BROKER="alpaca"                     # "alpaca" = your Alpaca paper account | "paper" = offline simulator
 PROVIDER="yfinance"                 # "yfinance" = real market data | "synthetic" = offline test data
 INTERVAL="120"                      # seconds between each scan
-APPROVAL="yes"                      # "yes" = text you for YES/NO before buying | "no" = buy automatically
-# Stocks to hunt across (leave blank to use the built-in 40-stock list).
-SYMBOLS=""
+APPROVAL="yes"                      # "yes" = ask before buying NON-core stocks | "no" = buy everything automatically
+
+# Your trusted core: these are traded AUTOMATICALLY, no text permission needed.
+CORE_STOCKS="AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ"
+# Wider pool to also hunt across; anything here NOT in CORE_STOCKS will text you
+# for YES/NO approval. Leave blank to use the built-in 40-stock pool.
+EXTRA_SCAN=""
 # -------------------------------------------------------------------------
 
 ARGS=(--loop --strategy "$STRATEGY" --broker "$BROKER" --provider "$PROVIDER" --interval "$INTERVAL")
 if [ "$APPROVAL" = "yes" ]; then
-  ARGS+=(--require-approval)
-  [ -n "$SYMBOLS" ] && ARGS+=(--universe "$SYMBOLS")
+  ARGS+=(--require-approval --auto-symbols "$CORE_STOCKS")
+  [ -n "$EXTRA_SCAN" ] && ARGS+=(--universe "$EXTRA_SCAN")
 else
-  ARGS+=(--symbols "${SYMBOLS:-AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ}")
+  ARGS+=(--symbols "$CORE_STOCKS")
 fi
 
 echo "Starting the bot ($BROKER, $PROVIDER, approval=$APPROVAL). Press Ctrl-C to stop."

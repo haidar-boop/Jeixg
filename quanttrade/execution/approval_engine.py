@@ -40,6 +40,7 @@ class ApprovalTradingEngine:
         data_provider: MarketDataProvider,
         universe: list[str],
         *,
+        auto_symbols: list[str] | None = None,
         sizer: PositionSizer | None = None,
         risk_manager: RiskManager | None = None,
         notifier: Notifier | None = None,
@@ -51,7 +52,12 @@ class ApprovalTradingEngine:
         self.strategy = strategy
         self.broker = broker
         self.data = data_provider
-        self.universe = universe
+        # Trusted symbols trade automatically; everything else needs SMS approval.
+        self.auto_symbols = [s.upper() for s in (auto_symbols or [])]
+        self._auto_set = set(self.auto_symbols)
+        # Symbols we ask permission for (the universe minus the trusted set).
+        self.ask_symbols = [s.upper() for s in universe if s.upper() not in self._auto_set]
+        self.universe = self.auto_symbols + self.ask_symbols
         self.sizer = sizer or FixedRiskSizer(0.01)
         self.risk = risk_manager or RiskManager()
         self.notifier = notifier or create_notifier()
@@ -68,10 +74,12 @@ class ApprovalTradingEngine:
             self.broker.connect()
         self.risk.start_day(self.broker.get_account().equity)
         self._running = True
-        logger.info("ApprovalTradingEngine started: %s over %d symbols",
-                    self.strategy.name, len(self.universe))
-        self.notifier.send("QuantTrade", f"Bot started (approval mode): scanning "
-                                         f"{len(self.universe)} stocks. I'll text before buying.")
+        logger.info("ApprovalTradingEngine started: %s | %d auto, %d ask",
+                    self.strategy.name, len(self.auto_symbols), len(self.ask_symbols))
+        self.notifier.send(
+            "QuantTrade",
+            f"Bot started: auto-trading {len(self.auto_symbols)} core stocks, and "
+            f"texting you for approval on {len(self.ask_symbols)} others.")
 
     def stop(self) -> None:
         self._running = False
@@ -83,8 +91,9 @@ class ApprovalTradingEngine:
         self.store.expire_old(self.pending_ttl)
         self._handle_exits()
         self._execute_approved()
+        self._auto_buy_trusted(account.equity)            # core 15: no permission
         if not self.store.has_outstanding():
-            self._scan_and_request(account.equity)
+            self._scan_and_request(account.equity)        # others: ask first
         return {"equity": account.equity, "outstanding": self.store.has_outstanding()}
 
     # --- helpers --------------------------------------------------------
@@ -140,6 +149,43 @@ class ApprovalTradingEngine:
             f"{result} {sign}${abs(pnl):,.2f}",
         )
 
+    def _buy(self, symbol: str, price: float, stop: float | None, equity: float,
+             positions: dict, *, approved: bool) -> tuple[bool, str]:
+        """Size, risk-check and place a buy. Returns (success, reason)."""
+        qty = self.sizer.size(equity=equity, price=price, stop_price=stop)
+        if qty <= 0:
+            return False, "size 0"
+        order = Order(symbol=symbol, side=OrderSide.BUY, quantity=qty,
+                      order_type=OrderType.MARKET, strategy=self.strategy.name)
+        if not self.risk.check_order(order, price, equity, positions):
+            return False, "risk limit"
+        try:
+            self.broker.submit_order(order)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("buy failed for %s", symbol)
+            return False, str(exc)
+        tag = "you approved" if approved else "core auto-trade"
+        self.notifier.send("QuantTrade: bought",
+                           f"BUY {qty:g} {symbol} @ ~${price:,.2f} ({tag})")
+        return True, "ok"
+
+    def _auto_buy_trusted(self, equity: float) -> None:
+        """Trade the trusted core stocks automatically -- no approval needed."""
+        positions = {p.symbol: p for p in self.broker.get_positions()}
+        for symbol in self.auto_symbols:
+            if symbol in positions and abs(positions[symbol].quantity) > 1e-9:
+                continue
+            try:
+                signal, price = self._signal_for(symbol, positions)
+            except Exception:  # noqa: BLE001
+                logger.exception("auto-buy check failed for %s", symbol)
+                continue
+            if signal and signal.type in {SignalType.BUY, SignalType.SCALE_IN}:
+                ok, reason = self._buy(symbol, price, signal.stop_loss, equity,
+                                       positions, approved=False)
+                if ok:
+                    positions[symbol] = True  # avoid double-buy within the loop
+
     def _execute_approved(self) -> None:
         positions = {p.symbol: p for p in self.broker.get_positions()}
         equity = self.broker.get_account().equity
@@ -148,33 +194,16 @@ class ApprovalTradingEngine:
             if symbol in positions and abs(positions[symbol].quantity) > 1e-9:
                 self.store.mark_executed(symbol)
                 continue
-            price = float(req.get("price") or 0.0)
-            qty = self.sizer.size(equity=equity, price=price,
-                                  stop_price=req.get("stop_loss"))
-            if qty <= 0:
-                self.store.mark_executed(symbol)
-                self.notifier.send("QuantTrade", f"Skipped {symbol}: position size came out to 0.")
-                continue
-            order = Order(symbol=symbol, side=OrderSide.BUY, quantity=qty,
-                          order_type=OrderType.MARKET, strategy=self.strategy.name)
-            decision = self.risk.check_order(order, price, equity, positions)
-            if not decision:
-                self.store.mark_executed(symbol)
-                self.notifier.send("QuantTrade", f"Skipped {symbol}: blocked by risk limits.")
-                continue
-            try:
-                self.broker.submit_order(order)
-                self.notifier.send("QuantTrade: bought",
-                                   f"BUY {qty:g} {symbol} @ ~${price:,.2f} (you approved)")
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("approved buy failed for %s", symbol)
-                self.notifier.send("QuantTrade", f"Could not buy {symbol}: {exc}")
+            ok, reason = self._buy(symbol, float(req.get("price") or 0.0),
+                                   req.get("stop_loss"), equity, positions, approved=True)
+            if not ok:
+                self.notifier.send("QuantTrade", f"Couldn't buy {symbol} ({reason}).")
             self.store.mark_executed(symbol)
 
     def _scan_and_request(self, equity: float) -> None:
         positions = {p.symbol: p for p in self.broker.get_positions()}
         best = None  # (strength, symbol, price, reason, stop)
-        for symbol in self.universe:
+        for symbol in self.ask_symbols:
             if symbol in positions and abs(positions[symbol].quantity) > 1e-9:
                 continue
             if self.store.in_cooldown(symbol, self.cooldown):
