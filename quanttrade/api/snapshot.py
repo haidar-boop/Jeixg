@@ -39,7 +39,10 @@ def build_watchlist_rows(bars: dict, positions: dict, strategy_name: str) -> lis
     rows: list[dict] = []
     for symbol, df in bars.items():
         try:
-            if df is None or len(df) < warmup:
+            if df is None:
+                continue
+            df = df.dropna()  # drop blank rows so we never emit NaN prices
+            if len(df) < warmup:
                 continue
             df = df.copy()
             df.attrs["symbol"] = symbol

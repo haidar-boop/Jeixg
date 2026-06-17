@@ -13,6 +13,7 @@ Point your PythonAnywhere WSGI config file at the module-level ``application``.
 """
 from __future__ import annotations
 
+import math
 import time
 from pathlib import Path
 
@@ -21,6 +22,17 @@ from ..core.logging_config import get_logger
 from .service import PlatformService
 
 logger = get_logger(__name__)
+
+
+def _clean(obj):
+    """Replace NaN/Infinity (invalid JSON, breaks browsers) with null."""
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _clean(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_clean(v) for v in obj]
+    return obj
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DASHBOARD_DIST = PROJECT_ROOT / "dashboard" / "dist"
@@ -109,7 +121,7 @@ def create_wsgi_app(service=None, dist_dir: Path | None = None):
             value = [] if name != "account" else {}
         if name in HEAVY:
             cache[key] = (time.time(), value)
-        return jsonify(value)
+        return jsonify(_clean(value))
 
     # --- REST API -------------------------------------------------------
     @app.get("/api/health")
@@ -146,7 +158,7 @@ def create_wsgi_app(service=None, dist_dir: Path | None = None):
         from .snapshot import read_watchlist
         rows = read_watchlist()
         if rows is not None:
-            return jsonify(rows)
+            return jsonify(_clean(rows))
         return serve("watchlist")
 
     @app.get("/api/clock")
