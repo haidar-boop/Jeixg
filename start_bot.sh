@@ -24,7 +24,7 @@ fi
 source .venv/bin/activate
 
 # ----- Settings you can change ------------------------------------------
-STRATEGY="rsi_reversion"            # which strategy to trade (active dip-buyer)
+STRATEGY="trend_momentum"            # best-evidenced trend-following momentum
 BROKER="alpaca"                     # "alpaca" = your Alpaca paper account | "paper" = offline simulator
 PROVIDER="yfinance"                 # "yfinance" = real market data | "synthetic" = offline test data
 INTERVAL="120"                      # seconds between each scan

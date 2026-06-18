@@ -54,7 +54,7 @@ class LivePlatformService:
         if not self.broker.is_connected:
             self.broker.connect()
 
-    def _all_bars(self, days: int = 260) -> dict:
+    def _all_bars(self, days: int = 400) -> dict:
         """One cached batch fetch of daily bars for the whole symbol list.
 
         Shared by the watchlist, scanner and predictions so a dashboard refresh

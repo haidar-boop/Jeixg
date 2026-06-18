@@ -5,7 +5,7 @@ Importing this package registers all built-in strategies with the
 """
 from .base import Strategy, StrategyContext, StrategyRegistry, register_strategy
 from .mean_reversion import BollingerReversion, RSIReversion
-from .momentum import Breakout, Momentum
+from .momentum import Breakout, Momentum, TrendMomentum
 from .trend_following import MovingAverageCrossover, TrendStrength
 
 __all__ = [
@@ -18,5 +18,6 @@ __all__ = [
     "BollingerReversion",
     "RSIReversion",
     "Momentum",
+    "TrendMomentum",
     "Breakout",
 ]

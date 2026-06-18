@@ -4,9 +4,51 @@ from __future__ import annotations
 import pandas as pd
 
 from ..core.enums import SignalType
-from ..indicators import atr, rsi
+from ..indicators import atr, rsi, sma
 from ..models import Signal
 from .base import Strategy, StrategyContext, register_strategy
+
+
+@register_strategy("trend_momentum")
+class TrendMomentum(Strategy):
+    """Time-series (trend-following) momentum -- the best-evidenced systematic
+    strategy (159 years / 40 countries of out-of-sample support).
+
+    Hold an asset while it's in a confirmed uptrend; exit when the trend breaks.
+
+    * Entry: price above its long-term moving average **and** positive momentum
+      over the lookback window.
+    * Exit: price falls below the trend MA, or momentum turns negative.
+    * An ATR-based stop is attached for risk control, echoing the volatility
+      scaling shown to roughly halve momentum drawdowns.
+    """
+
+    def on_init(self) -> None:
+        self.trend_ma = int(self.params.get("trend_ma", 200))
+        self.lookback = int(self.params.get("lookback", 120))   # ~6 months
+        self.atr_mult = float(self.params.get("atr_mult", 3.0))
+        self.warmup = max(self.trend_ma, self.lookback) + 5
+
+    def generate_signals(self, data: pd.DataFrame, context: StrategyContext) -> list[Signal]:
+        if len(data) < self.warmup:
+            return []
+        close = data["close"]
+        price = float(close.iloc[-1])
+        trend_ma = float(sma(close, self.trend_ma).iloc[-1])
+        momentum = price / float(close.iloc[-self.lookback]) - 1.0
+        symbol = data.attrs.get("symbol", "")
+
+        in_uptrend = price > trend_ma and momentum > 0
+        if in_uptrend and not context.has_position(symbol):
+            a = float(atr(data["high"], data["low"], close).iloc[-1])
+            return [Signal(symbol, SignalType.BUY,
+                           strength=min(max(momentum, 0.0) / 0.20, 1.0), price=price,
+                           stop_loss=price - self.atr_mult * a, strategy=self.name,
+                           metadata={"reason": f"uptrend +{momentum:.0%} over {self.lookback}d, "
+                                               f"above {self.trend_ma}d avg"})]
+        if context.has_position(symbol) and (price < trend_ma or momentum < 0):
+            return [Signal(symbol, SignalType.CLOSE, price=price, strategy=self.name)]
+        return []
 
 
 @register_strategy("momentum")

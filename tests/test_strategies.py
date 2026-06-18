@@ -45,3 +45,11 @@ def test_context_position_helpers():
     assert ctx.has_position("AAPL")
     assert ctx.position_qty("AAPL") == 10
     assert not ctx.has_position("MSFT")
+
+
+def test_trend_momentum_registered_and_signals(ohlcv):
+    strat = StrategyRegistry.create("trend_momentum", trend_ma=50, lookback=30)
+    ohlcv.attrs["symbol"] = "AAPL"
+    ctx = StrategyContext(positions={}, equity=100_000, cash=100_000)
+    signals = strat.generate_signals(ohlcv, ctx)
+    assert all(isinstance(s, Signal) for s in signals)
