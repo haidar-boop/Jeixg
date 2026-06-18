@@ -51,6 +51,54 @@ class TrendMomentum(Strategy):
         return []
 
 
+@register_strategy("trend_pullback")
+class TrendPullback(Strategy):
+    """A synthesis strategy: 'buy strong uptrends on a pullback, ride the trend.'
+
+    Rationale -- plain trend-following has a real edge but tends to *enter when a
+    stock is already extended*, then gets stopped out on normal noise. This keeps
+    the evidenced trend/momentum edge but improves the entry and holds winners:
+
+    * **Regime filter** (the edge): only go long when price is above its long
+      moving average AND momentum over the lookback is positive -- i.e. a genuine
+      uptrend (time-series momentum).
+    * **Entry timing** (the tweak): don't buy when extended; wait for a *pullback*
+      within that uptrend (RSI dips below ``buy_rsi``) to get a better price.
+    * **Exit** (let winners run): close only when the trend breaks (price falls
+      below the long MA). An ATR stop bounds the downside.
+
+    Not magic -- it's a reasoned combination of components that each have
+    evidence. Validate before trusting it.
+    """
+
+    def on_init(self) -> None:
+        self.trend_ma = int(self.params.get("trend_ma", 200))
+        self.lookback = int(self.params.get("lookback", 120))
+        self.buy_rsi = float(self.params.get("buy_rsi", 45))
+        self.atr_mult = float(self.params.get("atr_mult", 3.0))
+        self.warmup = max(self.trend_ma, self.lookback) + 5
+
+    def generate_signals(self, data: pd.DataFrame, context: StrategyContext) -> list[Signal]:
+        if len(data) < self.warmup:
+            return []
+        close = data["close"]
+        price = float(close.iloc[-1])
+        trend_ma = float(sma(close, self.trend_ma).iloc[-1])
+        momentum = price / float(close.iloc[-self.lookback]) - 1.0
+        r = float(rsi(close).iloc[-1])
+        symbol = data.attrs.get("symbol", "")
+
+        in_uptrend = price > trend_ma and momentum > 0
+        if in_uptrend and r < self.buy_rsi and not context.has_position(symbol):
+            a = float(atr(data["high"], data["low"], close).iloc[-1])
+            return [Signal(symbol, SignalType.BUY, strength=(self.buy_rsi - r) / self.buy_rsi,
+                           price=price, stop_loss=price - self.atr_mult * a, strategy=self.name,
+                           metadata={"reason": f"uptrend pullback (RSI {r:.0f}, +{momentum:.0%})"})]
+        if context.has_position(symbol) and price < trend_ma:
+            return [Signal(symbol, SignalType.CLOSE, price=price, strategy=self.name)]
+        return []
+
+
 @register_strategy("momentum")
 class Momentum(Strategy):
     """Rate-of-change momentum with an RSI confirmation filter."""
