@@ -208,10 +208,22 @@ class ApprovalTradingEngine:
         """Equity the bot is allowed to size against (capped by max_capital)."""
         return min(equity, self.max_capital) if self.max_capital else equity
 
+    def _deployed(self) -> float:
+        """Total dollar value currently invested in positions."""
+        return sum(abs(getattr(p, "market_value", 0.0))
+                   for p in self.broker.get_positions())
+
     def _buy(self, symbol: str, price: float, stop: float | None, equity: float,
              positions: dict, *, approved: bool) -> tuple[bool, str]:
         """Size, risk-check and place a buy. Returns (success, reason)."""
-        qty = self.sizer.size(equity=self._investable(equity), price=price, stop_price=stop)
+        invest = self._investable(equity)
+        # Enforce the capital cap on TOTAL deployed money, not just per position.
+        if self.max_capital:
+            remaining = self.max_capital - self._deployed()
+            if remaining < max(price * 0.01, 1.0):
+                return False, "capital cap reached"
+            invest = min(invest, remaining)
+        qty = self.sizer.size(equity=invest, price=price, stop_price=stop)
         if qty <= 0:
             return False, "size 0"
         order = Order(symbol=symbol, side=OrderSide.BUY, quantity=qty,

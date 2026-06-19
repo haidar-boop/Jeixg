@@ -150,6 +150,19 @@ def run_cycle(engine, control: ControlStore, state: dict, stop_pct: float) -> No
     _write_heartbeat()
     _update_watchlist_snapshot(engine, state)
     broker = engine.broker
+
+    # Roll the risk "day" automatically so daily-loss limits reset and any halt
+    # clears on its own each session -- without needing a manual restart.
+    today = datetime.now().date()
+    if state.get("risk_day") != today:
+        try:
+            engine.risk.start_day(broker.get_account().equity, today=today)
+            if state.get("risk_day") is not None:
+                logger.info("New trading day -- risk limits reset.")
+        except Exception:  # noqa: BLE001
+            logger.exception("risk day-reset failed")
+        state["risk_day"] = today
+
     open_now = is_market_open(broker)
 
     # Kill-switch: "SELL ALL" texted -> flatten everything.

@@ -84,3 +84,43 @@ def test_flatten_clears_everything():
     assert sold == 1
     assert broker.get_positions() == []
     assert broker.get_open_orders() == []
+
+
+def test_capital_cap_limits_total_deployment(tmp_path):
+    """Regression: max_capital caps TOTAL deployed money, not just per position."""
+    import datetime as _dt
+
+    from quanttrade.core.enums import SignalType
+    from quanttrade.models import Signal
+    from quanttrade.notifications.approvals import ApprovalStore
+    from quanttrade.strategies.base import Strategy
+
+    class AlwaysBuy(Strategy):
+        warmup = 1
+        def generate_signals(self, data, ctx):
+            sym = data.attrs.get("symbol", "")
+            if ctx.has_position(sym):
+                return []
+            price = float(data["close"].iloc[-1])
+            return [Signal(sym, SignalType.BUY, strength=0.9, price=price,
+                           stop_loss=price * 0.95, metadata={"reason": "x"})]
+
+    broker = PaperBroker(starting_cash=100_000, commission_per_share=0, slippage_bps=0)
+    broker.connect()
+    prov = create_data_provider("synthetic")
+    syms = ["AAPL", "MSFT", "NVDA", "SPY", "JPM", "XOM", "KO", "V"]
+    for s in syms:
+        df = prov.get_historical_bars(s, _dt.datetime(2023, 1, 1), _dt.datetime(2024, 1, 1))
+        broker.update_price(s, float(df["close"].iloc[-1]))
+    eng = ApprovalTradingEngine(
+        AlwaysBuy(), broker, prov, syms, auto_symbols=syms, notifier=_Quiet(),
+        store=ApprovalStore(tmp_path / "a.json"),
+        sizer=FixedRiskSizer(0.0075, fractional=True),
+        risk_manager=RiskManager(RiskLimits(max_position_pct=0.9, max_gross_exposure_pct=10.0)),
+        max_capital=1000,
+    )
+    eng.start()
+    for _ in range(8):
+        eng._auto_buy_trusted(broker.get_account().equity)
+    deployed = sum(abs(p.market_value) for p in broker.get_positions())
+    assert deployed <= 1050  # stays within the $1000 cap (small rounding headroom)
