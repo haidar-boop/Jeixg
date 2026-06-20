@@ -124,3 +124,14 @@ def test_capital_cap_limits_total_deployment(tmp_path):
         eng._auto_buy_trusted(broker.get_account().equity)
     deployed = sum(abs(p.market_value) for p in broker.get_positions())
     assert deployed <= 1050  # stays within the $1000 cap (small rounding headroom)
+
+
+def test_new_day_clears_halt():
+    """Bug 2: a daily-loss halt must clear when a new trading day starts
+    (the live loop now calls start_day automatically), without a restart."""
+    rm = RiskManager(RiskLimits(max_daily_loss_pct=0.03))
+    rm.start_day(1000)
+    rm.update_equity(950)        # -5% loss -> trips the daily-loss halt
+    assert rm.halted is True
+    rm.start_day(950)            # new trading day rolls over
+    assert rm.halted is False    # halt cleared automatically -- no restart needed
