@@ -167,8 +167,8 @@ When you're ready to trade real money through a broker (e.g. Alpaca):
 ## 7. Two-way SMS trade approval
 
 The bot can scan a universe of stocks and **text you for permission** before
-buying ("I found NVDA @ $120 (RSI 27, oversold). Reply YES to buy or NO to
-skip."). You reply YES/NO and it acts. Exits are handled automatically.
+buying ("I found NVDA @ $120 (RSI 27, oversold). Reply BUY to buy or SKIP to
+skip."). You reply BUY/SKIP and it acts. Exits are handled automatically.
 
 Enable it:
 
@@ -184,7 +184,7 @@ Enable it:
    Save. (This requires the dashboard web app from section 5 to be running, since
    it receives the replies.)
 
-Now when the bot finds an opportunity it texts you; your YES/NO reply is sent by
+Now when the bot finds an opportunity it texts you; your BUY/SKIP reply is sent by
 Twilio to `/sms`, recorded, and the bot buys on its next scan if you approved.
 Only your verified number (`QT_TWILIO_TO`) is accepted.
 
@@ -192,10 +192,10 @@ Only your verified number (`QT_TWILIO_TO`) is accepted.
 
 | Text | Effect |
 |------|--------|
-| `YES` / `NO` | approve / skip the stock the bot just found |
-| `STOP` (or `PAUSE`) | halt all new buying |
-| `RESUME` (or `START`) | resume trading |
-| `SELL ALL` (or `FLATTEN`) | close every position and cancel open orders |
+| `BUY` / `SKIP` | approve / skip the stock the bot just found |
+| `PAUSE` | halt all new buying |
+| `RESUME` | resume trading |
+| `SELLALL` (or `FLATTEN`) | close every position, then pause |
 
 ## 8. Crash / health alert (scheduled task)
 

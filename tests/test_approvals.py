@@ -11,14 +11,15 @@ from quanttrade.notifications.approvals import (
 
 
 @pytest.mark.parametrize("text,decision,symbol", [
-    ("yes", True, None),
-    ("YES", True, None),
-    ("y aapl", True, "AAPL"),
-    ("buy NVDA", True, "NVDA"),
+    ("buy", True, None),
+    ("BUY", True, None),
+    ("ok aapl", True, "AAPL"),
+    ("approve NVDA", True, "NVDA"),
     ("no", False, None),
     ("skip tsla", False, "TSLA"),
     ("maybe", None, None),
     ("", None, None),
+    ("yes", None, None),   # carrier-reserved -> intentionally NOT an approve word
 ])
 def test_parse_reply(text, decision, symbol):
     assert parse_reply(text) == (decision, symbol)
@@ -83,11 +84,11 @@ def test_sms_webhook(tmp_path, monkeypatch):
     client = create_wsgi_app(service=object()).test_client()
 
     # Wrong number is ignored.
-    bad = client.post("/sms", data={"From": "+19999999999", "Body": "YES"})
+    bad = client.post("/sms", data={"From": "+19999999999", "Body": "BUY"})
     assert b"authorized" in bad.data
 
     # Correct number approves.
-    ok = client.post("/sms", data={"From": "+15551234567", "Body": "YES"})
+    ok = client.post("/sms", data={"From": "+15551234567", "Body": "BUY"})
     assert b"buying AAPL" in ok.data
     assert [r["symbol"] for r in ApprovalStore().pop_approved()] == ["AAPL"]
 

@@ -35,8 +35,11 @@ DEFAULT_STORE_PATH = PROJECT_ROOT / "approvals.json"
 PENDING, APPROVED, DENIED, EXECUTED, EXPIRED = (
     "pending", "approved", "denied", "executed", "expired")
 
-_YES = {"yes", "y", "buy", "ok", "okay", "yeah", "yep", "sure", "go"}
-_NO = {"no", "n", "skip", "cancel", "stop", "nope"}
+# NOTE: avoid Twilio/carrier-reserved keywords (STOP, START, YES, CANCEL, END,
+# QUIT, UNSTOP, HELP, INFO) -- those are intercepted by the carrier and never
+# reach the bot. Use BUY/SKIP as the primary approve/decline words.
+_YES = {"buy", "ok", "okay", "approve", "yep", "sure"}
+_NO = {"no", "skip", "pass", "nope", "decline"}
 
 
 def parse_reply(body: str) -> tuple[bool | None, str | None]:

@@ -199,22 +199,24 @@ def create_wsgi_app(service=None, dist_dir: Path | None = None):
         decision, symbol = parse_reply(body)
         text = (body or "").strip().lower()
 
-        # Control commands take priority over yes/no.
+        # Control commands take priority over the buy/skip reply.
+        # NOTE: avoid carrier-reserved words (STOP/START/CANCEL/END/QUIT/HELP) --
+        # the carrier intercepts those before they reach us.
         from ..notifications.control import ControlStore
         ctrl = ControlStore()
-        if text in {"stop", "halt", "pause"}:
+        if text in {"pause", "halt", "freeze"}:
             ctrl.set_halt(True)
-            return _twiml("⏸ Trading paused. Text RESUME to start again, or SELL ALL to close everything.")
-        if text in {"resume", "start", "go", "unpause"}:
+            return _twiml("Trading paused. Text RESUME to start again, or SELLALL to close everything.")
+        if text in {"resume", "unpause", "trade"}:
             ctrl.set_halt(False)
-            return _twiml("▶️ Trading resumed.")
-        if text in {"sell all", "sellall", "flatten", "close all", "closeall"}:
+            return _twiml("Trading resumed.")
+        if text in {"sellall", "sell all", "flatten", "closeall", "close all", "dump"}:
             ctrl.request_flatten()
             ctrl.set_halt(True)  # pause immediately so it can't re-buy before flattening
             return _twiml("Selling all positions and pausing. Text RESUME to start trading again.")
 
         if decision is None:
-            return _twiml("Reply YES/NO to a stock I found, or STOP / RESUME / SELL ALL.")
+            return _twiml("Reply BUY/SKIP to a stock I found, or PAUSE / RESUME / SELLALL.")
         req = ApprovalStore().record_decision(decision, symbol)
         if req is None:
             return _twiml("No trade is waiting for approval right now.")

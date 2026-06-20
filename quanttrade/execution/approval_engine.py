@@ -309,6 +309,6 @@ class ApprovalTradingEngine:
         self.notifier.send(
             "QuantTrade found an opportunity",
             f"I found {symbol} @ ${price:,.2f} ({reason}). "
-            f"Reply YES to buy or NO to skip.",
+            f"Reply BUY to buy or SKIP to skip.",
         )
         logger.info("Requested approval to buy %s", symbol)
