@@ -165,11 +165,14 @@ def run_cycle(engine, control: ControlStore, state: dict, stop_pct: float) -> No
 
     open_now = is_market_open(broker)
 
-    # Kill-switch: "SELL ALL" texted -> flatten everything.
+    # Kill-switch: "SELL ALL" texted -> flatten everything AND pause, so the bot
+    # doesn't immediately re-buy what it just sold. Text RESUME to trade again.
     if control.pop_flatten() and hasattr(engine, "flatten_all"):
         n = engine.flatten_all()
+        control.set_halt(True)
         engine.notifier.send("QuantTrade",
-                             f"Flattened: sold {n} positions and cancelled open orders.")
+                             f"Sold {n} positions and cancelled open orders. Trading "
+                             f"PAUSED -- text RESUME to start again.")
 
     # Daily summary fires exactly when the session flips open -> closed.
     if state.get("market_was_open") and not open_now:

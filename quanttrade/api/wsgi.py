@@ -210,7 +210,8 @@ def create_wsgi_app(service=None, dist_dir: Path | None = None):
             return _twiml("▶️ Trading resumed.")
         if text in {"sell all", "sellall", "flatten", "close all", "closeall"}:
             ctrl.request_flatten()
-            return _twiml("Selling all positions and cancelling open orders on the next check.")
+            ctrl.set_halt(True)  # pause immediately so it can't re-buy before flattening
+            return _twiml("Selling all positions and pausing. Text RESUME to start trading again.")
 
         if decision is None:
             return _twiml("Reply YES/NO to a stock I found, or STOP / RESUME / SELL ALL.")

@@ -135,3 +135,59 @@ def test_new_day_clears_halt():
     assert rm.halted is True
     rm.start_day(950)            # new trading day rolls over
     assert rm.halted is False    # halt cleared automatically -- no restart needed
+
+
+def test_sell_all_pauses_and_does_not_rebuy(tmp_path, monkeypatch):
+    """SELL ALL must flatten AND pause, so the bot doesn't instantly re-buy."""
+    import datetime as _dt
+
+    import run_bot
+    from quanttrade.core.enums import SignalType
+    from quanttrade.models import Signal
+    from quanttrade.notifications import Notifier
+    from quanttrade.notifications.approvals import ApprovalStore
+    from quanttrade.notifications.control import ControlStore
+    from quanttrade.strategies.base import Strategy
+
+    monkeypatch.setattr(run_bot, "is_market_open", lambda b=None: True)
+    monkeypatch.setattr(run_bot, "HEARTBEAT_PATH", tmp_path / "hb.txt")
+    monkeypatch.setenv("QT_WATCHLIST_PATH", str(tmp_path / "wl.json"))
+
+    class _Q(Notifier):
+        name = "q"
+        def _send(self, s, m): ...
+
+    class AlwaysBuy(Strategy):
+        warmup = 1
+        def generate_signals(self, data, ctx):
+            sym = data.attrs.get("symbol", "")
+            if ctx.has_position(sym):
+                return []
+            price = float(data["close"].iloc[-1])
+            return [Signal(sym, SignalType.BUY, strength=0.9, price=price,
+                           stop_loss=price * 0.95, metadata={"reason": "x"})]
+
+    broker = PaperBroker(starting_cash=100_000, commission_per_share=0, slippage_bps=0)
+    broker.connect()
+    prov = create_data_provider("synthetic")
+    syms = ["AAPL", "MSFT", "NVDA"]
+    for s in syms:
+        df = prov.get_historical_bars(s, _dt.datetime(2023, 1, 1), _dt.datetime(2024, 1, 1))
+        broker.update_price(s, float(df["close"].iloc[-1]))
+    eng = ApprovalTradingEngine(
+        AlwaysBuy(), broker, prov, syms, auto_symbols=syms, notifier=_Q(),
+        store=ApprovalStore(tmp_path / "a.json"),
+        sizer=FixedRiskSizer(0.0075, fractional=True),
+        risk_manager=RiskManager(RiskLimits(max_position_pct=0.9, max_gross_exposure_pct=10.0)),
+        max_capital=1000)
+    ctrl = ControlStore(tmp_path / "control.json")
+    state: dict = {}
+    eng.start()
+    run_bot.run_cycle(eng, ctrl, state, 0.08)
+    assert len(broker.get_positions()) > 0      # bought
+
+    ctrl.request_flatten()
+    run_bot.run_cycle(eng, ctrl, state, 0.08)
+    run_bot.run_cycle(eng, ctrl, state, 0.08)   # extra cycle: must NOT re-buy
+    assert broker.get_positions() == []
+    assert ctrl.is_halted() is True
