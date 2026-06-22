@@ -4,9 +4,43 @@ from __future__ import annotations
 import pandas as pd
 
 from ..core.enums import SignalType
-from ..indicators import atr, rsi, sma
+from ..indicators import atr, macd, rsi, sma
 from ..models import Signal
 from .base import Strategy, StrategyContext, register_strategy
+
+
+@register_strategy("trend_macd")
+class TrendMACD(Strategy):
+    """Trend + MACD momentum confirmation.
+
+    Buy when price is above its long-term moving average (uptrend) AND the MACD
+    histogram is positive (momentum confirming). Exit when MACD momentum rolls
+    over (histogram < 0) or the trend breaks (price below the MA). ATR stop for
+    risk. A cleaner-timed cousin of plain trend-following.
+    """
+
+    def on_init(self) -> None:
+        self.trend_ma = int(self.params.get("trend_ma", 200))
+        self.atr_mult = float(self.params.get("atr_mult", 3.0))
+        self.warmup = self.trend_ma + 10
+
+    def generate_signals(self, data: pd.DataFrame, context: StrategyContext) -> list[Signal]:
+        if len(data) < self.warmup:
+            return []
+        close = data["close"]
+        price = float(close.iloc[-1])
+        trend_ma = float(sma(close, self.trend_ma).iloc[-1])
+        hist = float(macd(close)["histogram"].iloc[-1])
+        symbol = data.attrs.get("symbol", "")
+
+        if price > trend_ma and hist > 0 and not context.has_position(symbol):
+            a = float(atr(data["high"], data["low"], close).iloc[-1])
+            return [Signal(symbol, SignalType.BUY, strength=1.0, price=price,
+                           stop_loss=price - self.atr_mult * a, strategy=self.name,
+                           metadata={"reason": "uptrend + MACD up"})]
+        if context.has_position(symbol) and (price < trend_ma or hist < 0):
+            return [Signal(symbol, SignalType.CLOSE, price=price, strategy=self.name)]
+        return []
 
 
 @register_strategy("trend_momentum")
