@@ -12,8 +12,7 @@ from quanttrade.risk import FixedFractionSizer, RiskLimits, RiskManager
 import quanttrade.strategies  # noqa: F401  registers strategies
 from quanttrade.strategies import StrategyRegistry
 
-SYMBOLS = ["AAPL", "MSFT", "GOOG", "AMZN", "NVDA", "META", "JPM", "V",
-           "WMT", "XOM", "HD", "COST", "KO", "PEP", "QQQ", "SPY"]
+SYMBOLS = ["AAPL", "MSFT", "GOOG", "AMZN", "NVDA", "JPM", "WMT", "XOM", "QQQ", "SPY"]
 STRATS = ["trend_momentum", "trend_macd", "trend_pullback", "ma_crossover",
           "momentum", "breakout", "rsi_reversion", "bollinger_reversion"]
 
@@ -54,7 +53,7 @@ def bh(data):  # buy-and-hold benchmark (equal weight)
     return float(np.mean(rets))
 
 
-periods = {"IN-SAMPLE 2015-2020": (2015, 2020), "OUT-SAMPLE 2021-2023": (2021, 2023)}
+periods = {"IN-SAMPLE 2018-2020": (2018, 2020), "OUT-SAMPLE 2021-2023": (2021, 2023)}
 results = {}
 for label, (a, b) in periods.items():
     data = slice_period(a, b)
