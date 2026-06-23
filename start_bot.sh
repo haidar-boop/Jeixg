@@ -24,7 +24,7 @@ fi
 source .venv/bin/activate
 
 # ----- Settings you can change ------------------------------------------
-STRATEGY="buy_and_hold"             # buy the basket and hold (best PnL in the shootout)
+STRATEGY="ensemble"                 # regime-aware multi-sleeve ensemble (risk-managed)
 BROKER="alpaca"                     # "alpaca" = your Alpaca paper account | "paper" = offline simulator
 PROVIDER="yfinance"                 # "yfinance" = real market data | "synthetic" = offline test data
 INTERVAL="120"                      # seconds between each scan
@@ -33,7 +33,7 @@ MAX_CAPITAL="1000"                  # most money the bot may deploy (e.g. 1000).
 STOP_LOSS_PCT="0"                   # OFF for true buy-and-hold (ride out dips). Set 0.08 to add an 8% safety stop.
 
 # The full list of stocks the bot trades.
-ALL_STOCKS="AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ,AVGO,COST,HD,BAC,DIS,PYPL,INTC,CRM,PFE,KO,PEP,CSCO,ORCL,ADBE,QCOM,UBER,SHOP,COIN,PLTR,SOFI,BA,GE,F,T,MU"
+ALL_STOCKS="AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ,AVGO,COST,HD,BAC,DIS,PYPL,INTC,CRM,PFE,KO,PEP,CSCO,ORCL,ADBE,QCOM,UBER,SHOP,COIN,PLTR,SOFI,BA,GE,F,T,MU,GLD,TLT,IWM,HYG"
 # When ASK_PERMISSION="yes", these are auto-traded and the REST need your YES/NO.
 CORE_STOCKS="AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ"
 # -------------------------------------------------------------------------

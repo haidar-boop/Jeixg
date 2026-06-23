@@ -70,7 +70,6 @@ def build_engine(args):
     )
     broker.connect()
     data = create_data_provider(args.provider)
-    strategy = StrategyRegistry.create(args.strategy)
     risk = RiskManager(RiskLimits.from_config(cfg))
     fractional = getattr(broker, "supports_fractional", False)
     max_capital = args.max_capital or float(cfg.get("broker.max_capital", 0) or 0)
@@ -79,6 +78,17 @@ def build_engine(args):
     auto = [s.strip().upper() for s in args.auto_symbols.split(",") if s.strip()]
     symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
 
+    # The ensemble is a portfolio-level strategy with its own rebalancing engine.
+    if args.strategy == "ensemble":
+        from quanttrade.execution.portfolio_engine import PortfolioEngine
+        engine = PortfolioEngine(broker, data, universe, risk_manager=risk,
+                                 max_capital=max_capital)
+        if max_capital:
+            logger.info("Capital cap: bot will deploy at most $%.2f", max_capital)
+        engine.start()
+        return engine
+
+    strategy = StrategyRegistry.create(args.strategy)
     # Buy-and-hold has no stops, so size by equal weight; everything else risks a
     # fixed fraction per trade off the stop distance.
     if args.strategy == "buy_and_hold":
@@ -140,6 +150,11 @@ def _update_watchlist_snapshot(engine, state: dict) -> None:
 
         from quanttrade.api.snapshot import build_watchlist_rows, write_watchlist
         from quanttrade.core.enums import BarInterval
+        # Engines with their own view (e.g. the ensemble) provide watchlist rows.
+        if hasattr(engine, "watchlist_rows"):
+            write_watchlist(engine.watchlist_rows())
+            state["wl_ts"] = time.time()
+            return
         symbols = getattr(engine, "universe", None) or getattr(engine, "symbols", [])
         if not symbols:
             return
