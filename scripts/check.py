@@ -87,8 +87,13 @@ def main() -> None:
         import quanttrade.strategies  # noqa: F401
         from quanttrade.strategies import StrategyRegistry
         name = get_config().get("trading.strategy", "rsi_reversion")
-        StrategyRegistry.create(name)
-        return OK, f"'{name}' loaded ({len(StrategyRegistry.available())} available)"
+        if name == "ensemble":  # portfolio-level allocator, not a per-symbol strategy
+            from quanttrade.strategies.ensemble import EnsembleAllocator  # noqa: F401
+            return OK, "'ensemble' portfolio allocator loaded"
+        if name in StrategyRegistry.available():
+            StrategyRegistry.create(name)
+            return OK, f"'{name}' loaded ({len(StrategyRegistry.available())} available)"
+        return WARN, f"strategy '{name}' not in registry"
     check("Strategy", c_strategy)
 
     def c_backtest():
