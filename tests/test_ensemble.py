@@ -54,3 +54,17 @@ def test_portfolio_engine_flatten():
     eng.run_once()
     assert eng.flatten_all() >= 0
     assert broker.get_positions() == []
+
+
+def test_allocator_survives_bad_tickers():
+    """One empty/short/NaN ticker must not wipe the whole basket (regression)."""
+    import numpy as np
+    import pandas as pd
+    bars = _bars()
+    bars["BADX"] = pd.DataFrame(columns=["open", "high", "low", "close", "volume"])  # empty
+    bars["NEWY"] = bars["AAPL"].tail(20).copy()                                      # too short
+    g = bars["XOM"].copy(); g.loc[g.index[-1], "close"] = np.nan; bars["XOM"] = g    # NaN tail
+    rows = EnsembleAllocator().detail(bars)
+    syms = {r["symbol"] for r in rows}
+    assert len(rows) >= 6
+    assert "BADX" not in syms and "NEWY" not in syms

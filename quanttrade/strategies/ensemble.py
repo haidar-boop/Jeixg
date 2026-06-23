@@ -39,8 +39,15 @@ class EnsembleAllocator:
         self.market = market
 
     def _latest(self, bars: dict[str, pd.DataFrame]):
-        closes = pd.DataFrame({s: d["close"] for s, d in bars.items()
-                               if d is not None and len(d) >= self.warmup}).dropna()
+        # Only include symbols that actually have enough history, so one bad /
+        # short / missing ticker can't wipe the whole basket via row-wise dropna.
+        cols = {s: d["close"] for s, d in bars.items()
+                if d is not None and d["close"].notna().sum() >= self.warmup}
+        if not cols:
+            return pd.DataFrame()
+        closes = pd.DataFrame(cols)
+        closes = closes.dropna(axis=1, thresh=self.warmup)  # drop thin columns
+        closes = closes.ffill().dropna()                    # fill gaps, drop leading NaN
         return closes
 
     def target_weights(self, bars: dict[str, pd.DataFrame]) -> dict[str, float]:
