@@ -17,15 +17,22 @@ class PositionSizer(ABC):
 
 
 class FixedFractionSizer(PositionSizer):
-    """Risk a fixed fraction of equity as notional exposure per position."""
+    """Allocate a fixed fraction of equity as notional exposure per position.
 
-    def __init__(self, fraction: float = 0.1) -> None:
+    ``fractional=True`` supports brokers with fractional shares (e.g. Alpaca), so
+    small per-symbol budgets still buy expensive stocks.
+    """
+
+    def __init__(self, fraction: float = 0.1, fractional: bool = False) -> None:
         self.fraction = fraction
+        self.fractional = fractional
 
     def size(self, *, equity: float, price: float, **kwargs) -> float:
         if price <= 0:
             return 0.0
-        return math.floor((equity * self.fraction) / price)
+        shares = (equity * self.fraction) / price
+        shares = min(shares, equity / price)  # never exceed the budget
+        return round(shares, 4) if self.fractional else math.floor(shares)
 
 
 class FixedRiskSizer(PositionSizer):

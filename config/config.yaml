@@ -12,7 +12,7 @@ app:
 trading:
   mode: paper               # paper | live | backtest | forward_test
   base_currency: USD
-  strategy: trend_momentum   # strategy shown on the dashboard watchlist
+  strategy: buy_and_hold   # strategy shown on the dashboard watchlist
 
 data:
   provider: synthetic       # synthetic | yfinance

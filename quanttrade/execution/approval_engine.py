@@ -217,13 +217,15 @@ class ApprovalTradingEngine:
              positions: dict, *, approved: bool) -> tuple[bool, str]:
         """Size, risk-check and place a buy. Returns (success, reason)."""
         invest = self._investable(equity)
+        remaining = None
         # Enforce the capital cap on TOTAL deployed money, not just per position.
         if self.max_capital:
             remaining = self.max_capital - self._deployed()
-            if remaining < max(price * 0.01, 1.0):
+            if remaining < max(price * 0.0001, 1.0):
                 return False, "capital cap reached"
-            invest = min(invest, remaining)
         qty = self.sizer.size(equity=invest, price=price, stop_price=stop)
+        if remaining is not None:
+            qty = min(qty, remaining / price)  # don't exceed the remaining budget
         if qty <= 0:
             return False, "size 0"
         order = Order(symbol=symbol, side=OrderSide.BUY, quantity=qty,

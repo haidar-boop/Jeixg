@@ -53,3 +53,15 @@ def test_trend_momentum_registered_and_signals(ohlcv):
     ctx = StrategyContext(positions={}, equity=100_000, cash=100_000)
     signals = strat.generate_signals(ohlcv, ctx)
     assert all(isinstance(s, Signal) for s in signals)
+
+
+def test_buy_and_hold_buys_once_never_sells(ohlcv):
+    strat = StrategyRegistry.create("buy_and_hold")
+    ohlcv.attrs["symbol"] = "AAPL"
+    # No position -> should emit a BUY
+    sigs = strat.generate_signals(ohlcv, StrategyContext(positions={}))
+    assert len(sigs) == 1 and sigs[0].type.value == "buy"
+    # Already holding -> emits nothing (never sells)
+    from quanttrade.models import Position
+    held = StrategyContext(positions={"AAPL": Position("AAPL", quantity=10)})
+    assert strat.generate_signals(ohlcv, held) == []

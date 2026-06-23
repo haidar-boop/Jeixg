@@ -31,7 +31,7 @@ from quanttrade.execution import TradingEngine
 from quanttrade.execution.approval_engine import ApprovalTradingEngine
 from quanttrade.execution.market_hours import is_market_open
 from quanttrade.notifications.control import ControlStore
-from quanttrade.risk import FixedRiskSizer, RiskLimits, RiskManager
+from quanttrade.risk import FixedFractionSizer, FixedRiskSizer, RiskLimits, RiskManager
 from quanttrade.strategies import StrategyRegistry  # noqa: F401
 import quanttrade.strategies  # noqa: F401  (registers built-in strategies)
 
@@ -72,23 +72,30 @@ def build_engine(args):
     data = create_data_provider(args.provider)
     strategy = StrategyRegistry.create(args.strategy)
     risk = RiskManager(RiskLimits.from_config(cfg))
-    # Use fractional shares when the broker supports them (lets a small budget
-    # buy expensive stocks instead of rounding down to zero).
-    sizer = FixedRiskSizer(risk_pct=cfg.get("risk.default_risk_per_trade_pct", 0.01),
-                           fractional=getattr(broker, "supports_fractional", False))
+    fractional = getattr(broker, "supports_fractional", False)
     max_capital = args.max_capital or float(cfg.get("broker.max_capital", 0) or 0)
 
+    universe = [s.strip().upper() for s in (args.universe or args.symbols).split(",") if s.strip()]
+    auto = [s.strip().upper() for s in args.auto_symbols.split(",") if s.strip()]
+    symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
+
+    # Buy-and-hold has no stops, so size by equal weight; everything else risks a
+    # fixed fraction per trade off the stop distance.
+    if args.strategy == "buy_and_hold":
+        n = len(auto if args.require_approval else symbols) or 1
+        sizer = FixedFractionSizer(fraction=1.0 / n, fractional=fractional)
+    else:
+        sizer = FixedRiskSizer(risk_pct=cfg.get("risk.default_risk_per_trade_pct", 0.01),
+                               fractional=fractional)
+
     if args.require_approval:
-        universe = [s.strip().upper() for s in (args.universe or args.symbols).split(",") if s.strip()]
-        auto = [s.strip().upper() for s in args.auto_symbols.split(",") if s.strip()]
         engine = ApprovalTradingEngine(
             strategy=strategy, broker=broker, data_provider=data, universe=universe,
             auto_symbols=auto, sizer=sizer, risk_manager=risk, max_capital=max_capital,
         )
     else:
         engine = TradingEngine(
-            strategy=strategy, broker=broker, data_provider=data,
-            symbols=[s.strip().upper() for s in args.symbols.split(",")],
+            strategy=strategy, broker=broker, data_provider=data, symbols=symbols,
             sizer=sizer, risk_manager=risk, max_capital=max_capital,
         )
     if max_capital:

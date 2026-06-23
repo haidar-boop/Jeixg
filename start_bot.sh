@@ -24,13 +24,13 @@ fi
 source .venv/bin/activate
 
 # ----- Settings you can change ------------------------------------------
-STRATEGY="trend_momentum"            # best-evidenced trend-following momentum
+STRATEGY="buy_and_hold"             # buy the basket and hold (best PnL in the shootout)
 BROKER="alpaca"                     # "alpaca" = your Alpaca paper account | "paper" = offline simulator
 PROVIDER="yfinance"                 # "yfinance" = real market data | "synthetic" = offline test data
 INTERVAL="120"                      # seconds between each scan
 ASK_PERMISSION="no"                 # "no" = auto-trade ALL stocks (no permission texts) | "yes" = auto-trade CORE, text for permission on the rest
 MAX_CAPITAL="1000"                  # most money the bot may deploy (e.g. 1000). Use "0" for no cap.
-STOP_LOSS_PCT="0.08"                # protective stop placed under each position (0.08 = 8%; "0" = off)
+STOP_LOSS_PCT="0"                   # OFF for true buy-and-hold (ride out dips). Set 0.08 to add an 8% safety stop.
 
 # The full list of stocks the bot trades.
 ALL_STOCKS="AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ,AVGO,COST,HD,BAC,DIS,PYPL,INTC,CRM,PFE,KO,PEP,CSCO,ORCL,ADBE,QCOM,UBER,SHOP,COIN,PLTR,SOFI,BA,GE,F,T,MU"
