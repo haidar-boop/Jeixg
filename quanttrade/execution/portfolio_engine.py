@@ -101,7 +101,8 @@ class PortfolioEngine:
                 continue
             target_val = weights.get(symbol, 0.0) * capital
             pos = positions.get(symbol)
-            cur_val = (pos.quantity * price) if pos else 0.0
+            # Use the broker's reported market value (real current price) for accuracy.
+            cur_val = abs(pos.market_value) if pos else 0.0
             diff = target_val - cur_val
             if abs(diff) < band:
                 continue

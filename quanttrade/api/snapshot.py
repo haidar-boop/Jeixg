@@ -30,6 +30,18 @@ def _path() -> Path:
 
 def build_watchlist_rows(bars: dict, positions: dict, strategy_name: str) -> list[dict]:
     """Compute per-symbol signal + indicators from pre-fetched bars."""
+    # The ensemble is portfolio-level -> use its allocator for the watchlist.
+    if strategy_name == "ensemble":
+        try:
+            from ..strategies.ensemble import EnsembleAllocator
+            rows = EnsembleAllocator().detail(bars)
+            for r in rows:
+                r["held"] = r["symbol"] in positions
+                r["position_qty"] = 0
+            return rows
+        except Exception:  # noqa: BLE001
+            logger.exception("ensemble watchlist failed")
+            return []
     try:
         strategy = StrategyRegistry.create(strategy_name)
     except Exception:  # noqa: BLE001
