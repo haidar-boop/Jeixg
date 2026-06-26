@@ -46,3 +46,9 @@ heartbeat.txt
 control.json
 .health_alerted
 watchlist.json
+
+# Crypto bot runtime state (separate instance)
+heartbeat_crypto.txt
+control_crypto.json
+approvals_crypto.json
+watchlist_crypto.json

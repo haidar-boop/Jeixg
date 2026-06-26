@@ -4,6 +4,7 @@ Importing this package registers all built-in strategies with the
 ``StrategyRegistry`` so they can be created by name (config-driven / plug-in).
 """
 from .base import Strategy, StrategyContext, StrategyRegistry, register_strategy
+from .crypto import CryptoMomentum
 from .mean_reversion import BollingerReversion, RSIReversion
 from .momentum import Breakout, Momentum, TrendMACD, TrendMomentum, TrendPullback
 from .passive import BuyAndHold
@@ -24,4 +25,5 @@ __all__ = [
     "TrendMACD",
     "Breakout",
     "BuyAndHold",
+    "CryptoMomentum",
 ]

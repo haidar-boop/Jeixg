@@ -20,6 +20,7 @@ PAPER broker + synthetic data so it runs safely with no credentials.
 from __future__ import annotations
 
 import argparse
+import os
 import signal
 import time
 
@@ -42,8 +43,11 @@ logger = get_logger("run_bot")
 _RUNNING = True
 
 # Heartbeat file: updated every cycle so an external health check can tell the
-# bot is alive (see scripts/health_check.py).
-HEARTBEAT_PATH = Path(__file__).resolve().parent / "heartbeat.txt"
+# bot is alive (see scripts/health_check.py). Overridable via QT_HEARTBEAT_PATH so
+# a second bot instance (e.g. the crypto bot) writes its own heartbeat and never
+# collides with the main bot's.
+HEARTBEAT_PATH = Path(os.getenv("QT_HEARTBEAT_PATH")
+                      or (Path(__file__).resolve().parent / "heartbeat.txt"))
 
 # The trusted core: traded automatically, no approval needed.
 DEFAULT_AUTO = "AAPL,MSFT,GOOG,AMZN,NVDA,TSLA,META,AMD,NFLX,JPM,V,WMT,XOM,SPY,QQQ"
@@ -168,7 +172,8 @@ def _update_watchlist_snapshot(engine, state: dict) -> None:
         logger.exception("watchlist snapshot failed")
 
 
-def run_cycle(engine, control: ControlStore, state: dict, stop_pct: float) -> None:
+def run_cycle(engine, control: ControlStore, state: dict, stop_pct: float,
+              always_open: bool = False) -> None:
     _write_heartbeat()
     _update_watchlist_snapshot(engine, state)
     broker = engine.broker
@@ -185,7 +190,8 @@ def run_cycle(engine, control: ControlStore, state: dict, stop_pct: float) -> No
             logger.exception("risk day-reset failed")
         state["risk_day"] = today
 
-    open_now = is_market_open(broker)
+    # Crypto trades 24/7 -> skip the stock-market-hours gate when --always-open.
+    open_now = True if always_open else is_market_open(broker)
 
     # Kill-switch: "SELL ALL" texted -> flatten everything AND pause, so the bot
     # doesn't immediately re-buy what it just sold. Text RESUME to trade again.
@@ -240,6 +246,8 @@ def main(argv: list[str] | None = None) -> None:
                         help="cap total money the bot will deploy (0 = no cap)")
     parser.add_argument("--stop-loss-pct", type=float, default=-1.0,
                         help="protective stop distance, e.g. 0.08 (default: config)")
+    parser.add_argument("--always-open", action="store_true",
+                        help="trade 24/7, ignoring stock-market hours (for crypto)")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--once", action="store_true",
                       help="run a single cycle then exit (for cron/schedulers)")
@@ -268,14 +276,14 @@ def main(argv: list[str] | None = None) -> None:
                 args.strategy, args.broker, args.provider, stop_pct * 100)
 
     if args.once:
-        run_cycle(engine, control, state, stop_pct)
+        run_cycle(engine, control, state, stop_pct, always_open=args.always_open)
         engine.stop()
         return
 
     errors = 0
     while _RUNNING:
         try:
-            run_cycle(engine, control, state, stop_pct)
+            run_cycle(engine, control, state, stop_pct, always_open=args.always_open)
             errors = 0
         except Exception:  # noqa: BLE001 - survive transient errors, alert if persistent
             errors += 1
