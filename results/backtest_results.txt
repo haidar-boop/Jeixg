@@ -1,0 +1,48 @@
+Backtest run: 2026-06-26 05:16 UTC
+Selection: systematic_v3_research
+============================================================
+
+########## systematic_v3_research ##########
+Downloading ETF data ...
+assets: ['SPY', 'QQQ', 'IWM', 'XLK', 'XLF', 'XLE', 'XLV', 'XLU', 'GLD', 'TLT', 'HYG'] | bars: 2012 
+
+Running v3 (HMM regime + DD throttle), v1 (simple gate), and ablations ...
+=== 2020 COVID ===
+variant                  return   cagr sharpe sortino   maxDD calmar
+v3 (HMM+DDthrottle)      +4.7%  +4.6%   0.60   0.68   -6.9%   0.67
+v3 (HMM, no throttle)    +6.2%  +6.2%   0.67   0.79   -7.6%   0.81
+v1 (simple gate)        +10.6% +10.5%   1.12   1.21   -8.9%   1.18
+SPY buy&hold            +17.2% +17.2%   0.64   0.73  -33.7%   0.51
+
+=== 2021 bull ===
+variant                  return   cagr sharpe sortino   maxDD calmar
+v3 (HMM+DDthrottle)      +2.2%  +2.2%   0.34   0.46   -5.9%   0.36
+v3 (HMM, no throttle)    +3.7%  +3.7%   0.48   0.67   -6.6%   0.56
+v1 (simple gate)        +11.8% +11.8%   1.44   1.94   -4.0%   2.97
+SPY buy&hold            +30.5% +30.5%   2.13   3.04   -5.1%   5.96
+
+=== 2022 bear ===
+variant                  return   cagr sharpe sortino   maxDD calmar
+v3 (HMM+DDthrottle)      -6.7%  -6.7%  -1.82  -2.50   -7.3%  -0.91
+v3 (HMM, no throttle)    -9.5%  -9.5%  -1.07  -1.85  -14.5%  -0.66
+v1 (simple gate)         -7.6%  -7.6%  -0.86  -1.26  -11.5%  -0.66
+SPY buy&hold            -18.6% -18.7%  -0.74  -1.18  -24.5%  -0.76
+
+=== 2023 bull ===
+variant                  return   cagr sharpe sortino   maxDD calmar
+v3 (HMM+DDthrottle)      +6.4%  +6.4%   1.15   1.79   -6.0%   1.08
+v3 (HMM, no throttle)   +13.5% +13.6%   1.53   2.65   -7.9%   1.72
+v1 (simple gate)         +7.6%  +7.7%   0.97   1.54   -7.8%   0.99
+SPY buy&hold            +26.7% +26.9%   1.90   3.12  -10.0%   2.70
+
+=== FULL 2017-2023 ===
+variant                  return   cagr sharpe sortino   maxDD calmar
+v3 (HMM+DDthrottle)     +32.4%  +4.1%   0.68   0.84  -11.9%   0.34
+v3 (HMM, no throttle)   +47.0%  +5.7%   0.71   0.93  -18.8%   0.30
+v1 (simple gate)        +50.2%  +6.0%   0.77   0.95  -12.4%   0.48
+SPY buy&hold           +137.9% +13.2%   0.75   0.89  -33.7%   0.39
+
+=== Overfitting / honesty stats (full sample) ===
+  v3 (HMM+throttle)      Deflated Sharpe P(edge>0 | 24 trials) = 42.8%
+  v1 (simple gate)       Deflated Sharpe P(edge>0 | 24 trials) = 51.8%
+  (PBO needs the full combinatorial CV battery -- not run here; see Part 8.)
