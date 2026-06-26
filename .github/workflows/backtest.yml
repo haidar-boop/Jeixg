@@ -1,0 +1,85 @@
+name: Backtest
+
+# Runs the research/backtest scripts on GitHub's servers (which have working
+# market-data internet) and saves the output so Claude can read it directly --
+# no more screenshots. Trigger it by hand from the Actions tab.
+#
+# It does NOT touch the live bot, and it needs NO secrets (Alpaca/Twilio keys
+# are never used here -- this only downloads public price data and backtests).
+
+on:
+  workflow_dispatch:
+    inputs:
+      which:
+        description: "Which backtest to run"
+        type: choice
+        default: all
+        options:
+          - all
+          - systematic_v3_research
+          - ensemble_v2_research
+          - strategy_shootout
+
+permissions:
+  contents: write          # so it can commit the results file back to the branch
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install yfinance        # market data provider for the backtests
+
+      - name: Run backtest(s)
+        env:
+          QT_TEST_PROVIDER: yfinance
+        run: |
+          mkdir -p results
+          OUT="results/backtest_results.txt"
+          {
+            echo "Backtest run: $(date -u '+%Y-%m-%d %H:%M UTC')"
+            echo "Selection: ${{ github.event.inputs.which }}"
+            echo "============================================================"
+          } > "$OUT"
+
+          run_one () {
+            echo "" | tee -a "$OUT"
+            echo "########## $1 ##########" | tee -a "$OUT"
+            # don't let one script's failure abort the others
+            python "scripts/$1.py" 2>&1 | tee -a "$OUT" || echo "(script $1 exited non-zero)" | tee -a "$OUT"
+          }
+
+          case "${{ github.event.inputs.which }}" in
+            all)
+              run_one systematic_v3_research
+              run_one ensemble_v2_research
+              ;;
+            *)
+              run_one "${{ github.event.inputs.which }}"
+              ;;
+          esac
+
+      - name: Upload results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest-results
+          path: results/backtest_results.txt
+
+      - name: Commit results back to the branch
+        if: always()
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add results/backtest_results.txt
+          git commit -m "Backtest results ($(date -u '+%Y-%m-%d %H:%M UTC'))" || echo "no changes to commit"
+          git push || echo "push skipped"
