@@ -42,7 +42,7 @@ STOP_LOSS_PCT="0.10"                # protective stop (crypto is volatile). 0.10
 
 # The coins the bot scans. yfinance crypto tickers end in -USD.
 # Majors (steadier) + cheaper "could run up" names. Edit this list freely.
-ALL_COINS="BTC-USD,ETH-USD,SOL-USD,XRP-USD,ADA-USD,DOGE-USD,TRX-USD,LTC-USD,LINK-USD,DOT-USD,AVAX-USD,MATIC-USD,ATOM-USD,XLM-USD,ALGO-USD,HBAR-USD,VET-USD,FIL-USD,NEAR-USD,INJ-USD"
+ALL_COINS="BTC-USD,ETH-USD,SOL-USD,XRP-USD,ADA-USD,DOGE-USD,TRX-USD,LTC-USD,LINK-USD,DOT-USD,AVAX-USD,POL-USD,ATOM-USD,XLM-USD,ALGO-USD,HBAR-USD,VET-USD,FIL-USD,NEAR-USD,INJ-USD"
 # -------------------------------------------------------------------------
 
 # Uses the approval engine so protective stops + the SELL ALL kill-switch work,

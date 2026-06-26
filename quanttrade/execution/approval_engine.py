@@ -81,7 +81,7 @@ class ApprovalTradingEngine:
                     self.strategy.name, len(self.auto_symbols), len(self.ask_symbols))
         self.notifier.send(
             "QuantTrade",
-            f"Bot started: auto-trading {len(self.auto_symbols)} core stocks, and "
+            f"Bot started: auto-trading {len(self.auto_symbols)} core symbols, and "
             f"texting you for approval on {len(self.ask_symbols)} others.")
 
     def stop(self) -> None:
