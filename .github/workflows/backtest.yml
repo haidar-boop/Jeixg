@@ -19,6 +19,7 @@ on:
           - systematic_v3_research
           - ensemble_v2_research
           - strategy_shootout
+          - crypto_smallcap_research
 
 permissions:
   contents: write          # so it can commit the results file back to the branch
